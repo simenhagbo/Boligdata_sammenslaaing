@@ -1,0 +1,41 @@
+# Data — regenereres av pipelinen, og kan ha redistribusjons-restriksjoner
+data/raw_data/
+data/processed_data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtuelle miljøer
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Lokale notater / planer som ikke skal i repo
+*.local.md
+NOTES.md
+.claude/
