@@ -19,10 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from collect.collect_kartverket import main as collect_kartverket
 from collect.collect_matrikkelen import main as collect_matrikkelen
 from collect.collect_ssb import main as collect_ssb
-from collect.collect_eiendom_norge import main as collect_eiendom_norge
 from standardize.standardize_kartverket import main as std_kartverket
 from standardize.standardize_ssb import main as std_ssb
-from standardize.standardize_eiendom_norge import main as std_eiendom_norge
 from standardize.standardize_matrikkelen import main as std_matrikkelen
 from standardize.standardize_geofeatures import main as std_geofeatures
 from merge.merge_and_quality import main as merge_all
@@ -47,7 +45,6 @@ def _run(label: str, fn, critical: bool = False) -> bool:
 def run_collect(include_matrikkelen: bool = False) -> None:
     _run("Innsamling — Kartverket", collect_kartverket, critical=True)
     _run("Innsamling — SSB", collect_ssb)
-    _run("Innsamling — Eiendom Norge", collect_eiendom_norge)
     if include_matrikkelen:
         _run("Innsamling — Matrikkelen (treg)", collect_matrikkelen)
 
@@ -58,7 +55,6 @@ def run_standardize(include_matrikkelen: bool = False) -> None:
     _run("Standardisering — Kartverket", std_kartverket, critical=True)
     _run("Standardisering — Geofeatures", std_geofeatures)
     _run("Standardisering — SSB", std_ssb)
-    _run("Standardisering — Eiendom Norge", std_eiendom_norge)
     if include_matrikkelen:
         _run("Standardisering — Matrikkelen", std_matrikkelen)
 

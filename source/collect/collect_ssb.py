@@ -1,14 +1,18 @@
 """
-Henter SSB-tabeller via JSON-stat API-et.
+Henter SSB-tabeller som tidsserie 2002-2024.
 
-  06265 — antall boliger per type per kommune
-  07459 — folkemengde per kommune
-  12558 — inntekt etter skatt per kommune
-  06035 — selveierboliger: kvm-pris og antall omsetninger per boligtype per kommune
-  06266 — antall boliger per bygningstype og byggeår per kommune
-  06513 — antall boliger per bygningstype og bruksareal per kommune
+Hver tabell har sin egen start-år (noen begynner først i 2006 eller 2008),
+så vi tar overlapp innenfor 2002-2024. Manglende år ender opp som NaN i
+sluttdatasettet — preprosessering tar seg av det.
 
-SSB leverer på kommunenivå; kobling til postnummer skjer i standardize-fasen.
+  06035  priser (kvm-pris + omsetninger per boligtype)
+  06265  antall boliger per bygningstype
+  06266  byggeår-fordeling (chunked pga størrelse)
+  06513  bruksareal-fordeling (chunked pga størrelse)
+  06913  folkemengde
+  12558  inntekt etter skatt (vi tar bare medianen, desil 5)
+  09429  utdanningsnivå
+  07984  sysselsetting
 """
 
 import json
@@ -21,12 +25,35 @@ RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 SSB_API = "https://data.ssb.no/api/v0/no/table"
 
+# Felles ML-tidsspann. Hver tabell henter sitt overlapp innenfor 2002-2024.
+AAR_MIN = 2002
+AAR_MAX = 2024
+
+
+def _aar(start: int) -> list[str]:
+    """Liste av år fra max(start, AAR_MIN) til AAR_MAX inkludert."""
+    return [str(y) for y in range(max(start, AAR_MIN), AAR_MAX + 1)]
+
+
+def fetch_chunked(table_id: str, base_query: dict, aar_list: list[str],
+                  chunk_size: int, out_prefix: str) -> None:
+    """Splitt en stor SSB-query på Tid for å unngå 800k-datapunkt-grensa."""
+    for i in range(0, len(aar_list), chunk_size):
+        chunk = aar_list[i:i + chunk_size]
+        # Lag en kopi av query med kun denne chunkens år for Tid
+        query = json.loads(json.dumps(base_query))
+        for sel in query["query"]:
+            if sel["code"] == "Tid":
+                sel["selection"]["values"] = chunk
+        out_name = f"{out_prefix}_part{i // chunk_size:02d}.json"
+        fetch_table(table_id, query, out_name)
+
 
 def fetch_table(table_id: str, query: dict, out_name: str) -> None:
     """Hent én SSB-tabell. POST fordi query-objektet kan bli stort."""
     out_path = RAW_DIR / out_name
     if out_path.exists():
-        print(f"  Allerede hentet: {out_path.name}")
+        print(f"  Allerede hentet: {out_path.name} ({out_path.stat().st_size / 1024:.0f} KB)")
         return
 
     print(f"  Henter SSB tabell {table_id}...")
@@ -34,10 +61,9 @@ def fetch_table(table_id: str, query: dict, out_name: str) -> None:
         f"{SSB_API}/{table_id}",
         json=query,
         headers={"Content-Type": "application/json"},
-        timeout=60,
+        timeout=180,
     )
     if resp.status_code >= 400:
-        # SSB returnerer beskrivende feilmelding ved feil query — vis den
         raise requests.HTTPError(
             f"SSB tabell {table_id}: HTTP {resp.status_code} — {resp.text[:300]}"
         )
@@ -53,12 +79,11 @@ def fetch_table(table_id: str, query: dict, out_name: str) -> None:
 
 
 def fetch_boliger_per_type() -> None:
-    # BygnType: 01=enebolig, 02=tomanns, 03=rekkehus, 04=blokk, 05=bofellesskap, 999=annet
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "BygnType", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(2006)}},
         ],
         "response": {"format": "json-stat2"},
     }
@@ -66,27 +91,27 @@ def fetch_boliger_per_type() -> None:
 
 
 def fetch_folkemengde() -> None:
-    # Summerer over Kjonn og Alder i std-fasen for å få totalbefolkning per kommune
+    # Bytter til 06913 fra 07459 fordi sistnevnte blir for stor med alder×kjønn
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Kjonn", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Alder", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "ContentsCode", "selection": {"filter": "item", "values": ["Personer1"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "ContentsCode", "selection": {"filter": "item", "values": ["Folkemengde"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(AAR_MIN)}},
         ],
         "response": {"format": "json-stat2"},
     }
-    fetch_table("07459", query, "folkemengde_07459.json")
+    fetch_table("06913", query, "folkemengde_06913.json")
 
 
 def fetch_inntekt() -> None:
-    # InntektSkatt "00S" = inntekt etter skatt
+    # 12558 gir verdier per desil 1-10. Vi tar bare desil 5 (medianen) i kroner.
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "InntektSkatt", "selection": {"filter": "item", "values": ["00S"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "Desiler", "selection": {"filter": "item", "values": ["05"]}},
+            {"code": "ContentsCode", "selection": {"filter": "item", "values": ["VerdiDesil"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(2005)}},
         ],
         "response": {"format": "json-stat2"},
     }
@@ -94,14 +119,12 @@ def fetch_inntekt() -> None:
 
 
 def fetch_priser() -> None:
-    # Boligtype: 01=enebolig, 02=småhus, 03=blokk. ContentsCode KvPris + Omsetninger.
-    # Små kommuner kan ha sensurerte verdier — det håndteres i std-fasen.
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "Boligtype", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "ContentsCode", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(AAR_MIN)}},
         ],
         "response": {"format": "json-stat2"},
     }
@@ -109,52 +132,84 @@ def fetch_priser() -> None:
 
 
 def fetch_byggeaar() -> None:
-    # BygnAr har 13 verdier (01=1900- ... 13=2021+, 99=ukjent). Vi slår sammen
-    # til fem perioder i std-fasen.
+    # Må chunkes på Tid — full query ville blitt ~1.5M datapunkter.
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "BygnType", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "BygnAr", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": []}},
         ],
         "response": {"format": "json-stat2"},
     }
-    fetch_table("06266", query, "byggeaar_06266.json")
+    fetch_chunked("06266", query, _aar(2006), chunk_size=5, out_prefix="byggeaar_06266")
 
 
 def fetch_bruksareal() -> None:
-    # BruksAreal har 15 grupper. Slås sammen til fem størrelser i std-fasen.
+    # Samme størrelsesproblem som byggeår — chunkes
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "BygnType", "selection": {"filter": "all", "values": ["*"]}},
             {"code": "BruksAreal", "selection": {"filter": "all", "values": ["*"]}},
-            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": []}},
         ],
         "response": {"format": "json-stat2"},
     }
-    fetch_table("06513", query, "bruksareal_06513.json")
+    fetch_chunked("06513", query, _aar(2007), chunk_size=5, out_prefix="bruksareal_06513")
+
+
+def fetch_utdanning() -> None:
+    # Nivaa: 01=grunnskole, 02a=videregående, 11=fagskole, 03a=UH kort,
+    # 04a=UH lang, 09=uoppgitt. Vi henter prosent for begge kjønn samlet.
+    query = {
+        "query": [
+            {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Nivaa", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Kjonn", "selection": {"filter": "item", "values": ["0"]}},
+            {"code": "ContentsCode", "selection": {"filter": "item", "values": ["PersonerProsent"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(AAR_MIN)}},
+        ],
+        "response": {"format": "json-stat2"},
+    }
+    fetch_table("09429", query, "utdanning_09429.json")
+
+
+def fetch_sysselsetting() -> None:
+    # Bare totaltall: alle næringer (00-99), alle yrkesaktive (15-74)
+    query = {
+        "query": [
+            {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "NACE2007", "selection": {"filter": "item", "values": ["00-99"]}},
+            {"code": "Kjonn", "selection": {"filter": "item", "values": ["0"]}},
+            {"code": "Alder", "selection": {"filter": "item", "values": ["15-74"]}},
+            {"code": "ContentsCode", "selection": {"filter": "item", "values": ["Sysselsatte"]}},
+            {"code": "Tid", "selection": {"filter": "item", "values": _aar(2008)}},
+        ],
+        "response": {"format": "json-stat2"},
+    }
+    fetch_table("07984", query, "sysselsetting_07984.json")
 
 
 SSB_FETCHERS = [
     ("Boliger per type (06265)", fetch_boliger_per_type),
-    ("Folkemengde (07459)", fetch_folkemengde),
+    ("Folkemengde (06913)", fetch_folkemengde),
     ("Inntekt (12558)", fetch_inntekt),
     ("Priser (06035)", fetch_priser),
     ("Byggeår (06266)", fetch_byggeaar),
     ("Bruksareal (06513)", fetch_bruksareal),
+    ("Utdanning (09429)", fetch_utdanning),
+    ("Sysselsetting (07984)", fetch_sysselsetting),
 ]
 
 
 def main() -> None:
-    print("=== Innsamling: SSB ===")
+    print(f"=== Innsamling: SSB ({AAR_MIN}-{AAR_MAX}) ===")
     failed: list[str] = []
     for label, fn in SSB_FETCHERS:
         try:
             fn()
         except Exception as e:
-            # En enkelt tabell-feil skal ikke stoppe de andre
             print(f"  ADVARSEL: {label} feilet: {e}")
             failed.append(label)
     if failed:
