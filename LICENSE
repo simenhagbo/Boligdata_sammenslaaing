@@ -36,13 +36,19 @@ terms:
       Free use with attribution to Bring as source
       https://www.bring.no/tjenester/adressetjenester/postnummer
 
-  * Statistisk sentralbyrå (tables 06265, 07459, 12558):
+  * Statistisk sentralbyrå (tabeller 06035, 06070, 06265, 06266, 06513,
+    06913, 07984, 09429, 09588, 05940, 10540, 12558, 14674):
       Creative Commons Attribution (CC BY 4.0) / NLOD 2.0
       https://www.ssb.no/
 
-  * Eiendom Norge (boligprisstatistikk):
-      Public statistics, attribution required
-      https://eiendomnorge.no/
+  * Entur (nasjonalt stoppestedregister via Journey Planner GraphQL):
+      Norsk lisens for offentlige data (NLOD) 2.0
+      https://developer.entur.org/
+
+  * Meteorologisk institutt (klima-normaler 1991-2020 for Oslo/Blindern,
+    Bergen/Florida, Trondheim/Voll, Stavanger/Sola, Tromsø, Kristiansand/Kjevik):
+      Creative Commons Attribution (CC BY 4.0)
+      https://www.met.no/
 
 When redistributing data fetched by this pipeline, you must comply with the
 license terms of the respective source and provide proper attribution.

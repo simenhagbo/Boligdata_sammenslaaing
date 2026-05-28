@@ -29,6 +29,22 @@ STORBYER = [
     ("Kristiansand", 58.1599, 8.0182),
 ]
 
+# Klima-normaler 1991-2020 fra MET Norges representative stasjoner (Blindern,
+# Florida, Voll, Sola, Tromsø, Kjevik). Hver postnummer "arver" klima fra sin
+# nærmeste storby — det er en grov proxy, men breddegrad og kystavstand er de
+# sterkste klimaprediktorene i Norge, og avstand_naermeste_storby_km tar
+# delvis hånd om resterende variasjon. Verdier hentet fra MET klimaservice-
+# senter sin offisielle 30-årsnormal-rapport.
+# (storby_navn, årlig snitt-temperatur °C, årsnedbør mm)
+KLIMA_NORMALER = {
+    "Oslo":         (6.4,  832),
+    "Bergen":       (8.6, 2253),
+    "Trondheim":    (5.6,  962),
+    "Stavanger":    (8.5, 1268),
+    "Tromsø":       (3.2, 1031),
+    "Kristiansand": (7.6, 1300),
+}
+
 
 def compute_geofeatures() -> gpd.GeoDataFrame:
     """Beregn areal, sentroide-koordinater og avstand til nærmeste storby."""
@@ -42,41 +58,63 @@ def compute_geofeatures() -> gpd.GeoDataFrame:
 
     gdf = gpd.read_parquet(src)
 
-    # Reprojiser til UTM 33N for meter-baserte beregninger
+    # Reprojiser fra EPSG:4326 (grader) til EPSG:25833 (UTM 33N, meter) før
+    # vi regner areal og avstand. Grader er ubrukelige for areal-beregning
+    # fordi én breddegrad er kortere ved polene enn ved ekvator.
     gdf_m = gdf.to_crs("EPSG:25833")
 
-    # Areal i km²
+    # Areal: shapely returnerer i CRS-enhetene (her: m²). Del på 1e6 for km².
     gdf["areal_km2"] = gdf_m.geometry.area / 1_000_000
 
-    # Sentroide i 25833, så tilbake til 4326 for lat/lon
+    # Sentroide regnes i meter-CRS for geometrisk korrekthet, deretter
+    # konverteres til lat/lon (EPSG:4326) for ML-features som er lett å tolke.
     sentroider_m = gdf_m.geometry.centroid
     sentroider_grader = gpd.GeoSeries(sentroider_m, crs="EPSG:25833").to_crs("EPSG:4326")
     gdf["sentroide_lon"] = sentroider_grader.x
     gdf["sentroide_lat"] = sentroider_grader.y
 
-    # Konverter storby-koordinater til 25833 for avstandsberegning
+    # Bygg storby-punkter. Vi får dem opprinnelig som (lat, lon) i 4326,
+    # men shapely Point tar (x, y) = (lon, lat). Pass på rekkefølgen!
     storby_punkter_4326 = gpd.GeoSeries(
         [Point(lon, lat) for _, lat, lon in STORBYER], crs="EPSG:4326"
     )
+    # Reprojiser også storbyene til 25833 så avstanden blir i meter
     storby_punkter_m = storby_punkter_4326.to_crs("EPSG:25833")
     storby_navn = [navn for navn, _, _ in STORBYER]
 
-    # Avstand fra hver sentroide til hver storby — produserer matrise (n_pnr × 6)
+    # Avstandsmatrise: én kolonne per storby, én rad per postnummer-sentroide.
+    # GeoSeries.distance er elementvis mellom seriene; vi deler på 1000 for km.
     avstander = pd.DataFrame(
         {
-            navn: sentroider_m.distance(punkt) / 1000  # meter → km
+            navn: sentroider_m.distance(punkt) / 1000
             for navn, punkt in zip(storby_navn, storby_punkter_m)
         }
     )
 
+    # Tre features fra matrisen: avstand til Oslo spesifikt (mest brukt som
+    # proxy for sentralitet), avstand til nærmeste storby uansett hvilken,
+    # og navnet på nærmeste storby (kategorisk feature).
     gdf["avstand_oslo_km"] = avstander["Oslo"].values
     gdf["avstand_naermeste_storby_km"] = avstander.min(axis=1).values
     gdf["naermeste_storby"] = avstander.idxmin(axis=1).values
 
+    # Klima-normaler: enklere proxy fra nærmeste storby. Krever ingen API-
+    # nøkkel og er stabil over tid. For mer presis kommune-klima kreves
+    # frost.met.no med Frost-stasjon-mapping — se README for fremtidig arbeid.
+    gdf["temperatur_normal"] = gdf["naermeste_storby"].map(
+        lambda by: KLIMA_NORMALER[by][0]
+    )
+    gdf["nedbor_normal_mm"] = gdf["naermeste_storby"].map(
+        lambda by: KLIMA_NORMALER[by][1]
+    )
+
+    # Drop geometri-kolonnen fra output — den finnes allerede i
+    # postnummer_geometri.parquet og blir lagt på i merge-fasen.
     cols = [
         "postnummer", "areal_km2",
         "sentroide_lat", "sentroide_lon",
         "avstand_oslo_km", "avstand_naermeste_storby_km", "naermeste_storby",
+        "temperatur_normal", "nedbor_normal_mm",
     ]
     out_df = pd.DataFrame(gdf[cols])
     out_df.to_parquet(out, index=False)

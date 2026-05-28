@@ -30,6 +30,7 @@ SPOT_TESTS_2024 = [
 
 
 def check(label: str, ok: bool, details: str = "") -> bool:
+    """Skriv ut en passert/feilet-rad og returner status for opptelling."""
     status = "OK  " if ok else "FAIL"
     print(f"  [{status}] {label}{(': ' + details) if details else ''}")
     return ok
@@ -65,6 +66,9 @@ def main() -> None:
         failures += 1
 
     print("\n2. Andeler summerer til 1 (per rad):")
+    # andel_*_kommune-kolonnene representerer en fordeling og skal summere til
+    # 1.0 (per kommune, per år). Vi filtrerer ut rader med sum=0 fordi de
+    # mangler data — bare gyldige fordelinger sjekkes.
     for navn, prefiks in [
         ("BygnType", "andel_bygntype_"),
         ("Byggeår", "andel_byggeaar_"),
@@ -75,13 +79,16 @@ def main() -> None:
             continue
         sums = df[cols].sum(axis=1)
         valid = sums[sums > 0]
+        # Tolererer mindre avvik fra 1.0 pga. flyttalls-presisjon
         ok = ((valid - 1.0).abs() < 0.001).all()
         if not check(f"{navn}: alle rader summerer til 1.0", ok,
                      f"min={valid.min():.4f}, max={valid.max():.4f}"):
             failures += 1
 
     print("\n3. SSB-verdier konsistente innen (kommune, år):")
-    # Alle postnummer i samme kommune & år skal ha identiske SSB-verdier
+    # SSB-data er på kommunenivå, så alle ~10 postnummer i samme kommune
+    # skal ha identiske verdier for et gitt år. Hvis en kolonne har flere
+    # unike verdier per (kommune, år), har join-logikken gått galt.
     kommune_aar_cols = [
         "befolkning", "inntekt_etter_skatt", "antall_boliger",
         "pris_kvm_alle_kommune", "median_byggeaar_kommune",
@@ -91,6 +98,7 @@ def main() -> None:
     for col in kommune_aar_cols:
         if col not in df.columns:
             continue
+        # nunique med dropna=True ignorerer NaN — kommuner uten data er OK
         n_unique = df.groupby(["kommune_nr", "aar"])[col].nunique(dropna=True).max()
         if n_unique > 1:
             inkonsistens.append((col, int(n_unique)))
@@ -113,6 +121,8 @@ def main() -> None:
         failures += 1
 
     print("\n5. Spot-tester for år 2024 (best dekning):")
+    # Bruker 2024 fordi det er året med høyest data-dekning — eldre år har
+    # ofte manglende verdier pga. kommunesammenslåinger
     df_2024 = df[df["aar"] == 2024]
     for pnr, kommune, bef_min, bef_max, pris_min, pris_max in SPOT_TESTS_2024:
         row = df_2024[df_2024["postnummer"] == pnr]
@@ -120,6 +130,8 @@ def main() -> None:
             print(f"  [SKIP] {pnr} ({kommune})")
             continue
         r = row.iloc[0]
+        # Sjekker at: postnummeret faktisk tilhører forventet kommune,
+        # befolkningstallet er i rimelig range, og prisen er plausibel
         ok_kommune = r["kommunenavn"].lower() == kommune.lower()
         ok_bef = bef_min <= (r["befolkning"] or 0) <= bef_max
         pris = r.get("pris_kvm_alle_kommune")

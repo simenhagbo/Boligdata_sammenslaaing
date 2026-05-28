@@ -15,15 +15,27 @@ opt-in i pipelinen; vi får tilsvarende info fra SSB tabell 06265.
 """
 
 import re
+import sys
 import time
 from pathlib import Path
 
 import requests
 
+# Sørg for at source/ er på sys.path slik at både direktekjøring og import
+# via pipeline.py finner _http-modulen
+_SOURCE_DIR = Path(__file__).parents[1]
+if str(_SOURCE_DIR) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_DIR))
+
+from collect import _http  # noqa: E402
+
 RAW_DIR = Path(__file__).parents[2] / "data" / "raw_data" / "matrikkelen"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 WFS_BASE = "https://wfs.geonorge.no/skwms1/wfs.matrikkelen-bygningspunkt"
+# Hver side er typisk <50 MB. Grensen er romslig nok til at faktiske svar
+# alltid passerer, men holder en kompromittert kilde fra å spise alt minne.
+MAX_PAGE_BYTES = 200_000_000
 
 # Beholdt fra tidligere — brukes ikke som filter (CQL ignoreres), men noterer
 # fylkesinndelingen for fremtidig referanse
@@ -34,18 +46,30 @@ MIN_GML_BYTES = 500
 
 
 def _count_returned(text: str) -> int:
-    """Hent numberReturned-attributtet fra root-elementet i WFS-responsen."""
+    """Hent numberReturned-attributtet fra root-elementet i WFS-responsen.
+
+    WFS 2.0 setter dette attributtet på <wfs:FeatureCollection>-elementet og
+    det forteller hvor mange features som faktisk ble returnert i denne
+    sidens respons. Vi bruker det til å vite når vi har nådd slutten av
+    paginering (returned < page_size = siste side).
+    """
     m = re.search(r'numberReturned="(\d+)"', text[:4000])
     return int(m.group(1)) if m else 0
 
 
 def _is_exception(text: str) -> bool:
+    """Sjekk om responsen er en ExceptionReport (WFS-feil) i stedet for data."""
     head = text[:500]
     return "ExceptionReport" in head or "ServiceException" in head
 
 
 def _fetch_page(fylke_nr: str, start_index: int, page_size: int) -> bytes:
-    """Hent én side bygninger som GML-bytes. Kaster ved XML-feilmelding."""
+    """Hent én side bygninger som GML-bytes. Kaster ved XML-feilmelding.
+
+    propertyName begrenser feltene som returneres — vi trenger bare
+    bygningstype og kommunenummer. Det reduserer responsstørrelsen
+    betraktelig sammenlignet med å få alle 15+ feltene per bygning.
+    """
     params = {
         "service": "WFS",
         "version": "2.0.0",
@@ -56,11 +80,11 @@ def _fetch_page(fylke_nr: str, start_index: int, page_size: int) -> bytes:
         "propertyName": "bygningstype,kommunenummer",
         "count": page_size,
         "startIndex": start_index,
-        # CQL_FILTER beholdes selv om den ignoreres — hvis Kartverket fikser det
-        # en gang, fungerer scriptet ut av boksen
+        # CQL_FILTER beholdes selv om den ignoreres i denne WFS-en — hvis
+        # Kartverket fikser bug-en, kjører scriptet effektivt ut av boksen
         "CQL_FILTER": f"strStartsWith(kommunenummer,'{fylke_nr}')=true",
     }
-    resp = requests.get(WFS_BASE, params=params, timeout=300)
+    resp = _http.get(WFS_BASE, params=params, timeout=300, max_bytes=MAX_PAGE_BYTES)
     resp.raise_for_status()
     if _is_exception(resp.text):
         raise RuntimeError(f"WFS returnerte feilmelding: {resp.text[:400]}")
@@ -68,7 +92,13 @@ def _fetch_page(fylke_nr: str, start_index: int, page_size: int) -> bytes:
 
 
 def fetch_bygninger_for_fylke(fylke_nr: str) -> None:
-    """Paginer gjennom bygninger og lagre hver side som egen .gml-fil."""
+    """Paginer gjennom bygninger og lagre hver side som egen .gml-fil.
+
+    Vi lagrer sidene som separate filer fordi de samlede GML-dataene blir
+    flere GB hvis vi samler alt i én fil. Sidene merges igjen i standardize-
+    fasen. En "_done"-markørfil markerer at hentingen er fullført — slik
+    kan vi avbryte og fortsette uten å miste fremgangen.
+    """
     fylke_dir = RAW_DIR / f"fylke_{fylke_nr}"
     fylke_dir.mkdir(exist_ok=True)
     done_marker = fylke_dir / "_done"
@@ -86,12 +116,15 @@ def fetch_bygninger_for_fylke(fylke_nr: str) -> None:
         try:
             content = _fetch_page(fylke_nr, start_index, page_size)
         except requests.HTTPError as e:
+            # WFS-en kan avvise store sider med 400/413 ved overbelastning.
+            # Fall tilbake til mindre page_size (1000) og fortsett.
             if page_size > 1000 and e.response is not None and e.response.status_code in (400, 413):
                 print(f"    page_size {page_size} avvist, prøver 1000...")
                 page_size = 1000
                 continue
             raise
 
+        # Mistenkelig liten respons = sannsynligvis ikke mer data å hente
         if len(content) < MIN_GML_BYTES:
             break
 
@@ -102,13 +135,16 @@ def fetch_bygninger_for_fylke(fylke_nr: str) -> None:
         (fylke_dir / f"page_{page_num:04d}.gml").write_bytes(content)
         total += returned
 
+        # Hvis vi fikk færre features enn forespurt, er vi på siste side
         if returned < page_size:
             break
 
         page_num += 1
         start_index += page_size
+        # Liten pause for å være snill mot WFS-tjenesten
         time.sleep(0.1)
 
+        # Progress hvert tiende batch så brukeren ser at noe skjer
         if page_num % 10 == 0:
             print(f"    fylke {fylke_nr}: {total:,} bygninger så langt...")
 

@@ -1,17 +1,17 @@
 # Boligdata sammenslåing
 
-> **NB:** Mye av koden og dokumentasjonen i dette repoet er skrevet med hjelp av
-> KI-verktøy (Claude/Anthropic). Jeg har gått igjennom alt, men det kan fortsatt
+> **NB:** Koden og dokumentasjonen i dette repoet er skrevet med hjelp av
+> KI-verktøy (Claude/Anthropic). Alt innhold er gjennomgått, men det kan fortsatt
 > finnes feil eller logiske brister. Bruk gjerne datasettet, men ikke uten å
 > verifisere det selv hvis du baserer noe viktig på det.
 
-Sommerprosjekt der jeg slår sammen flere offentlige norske datakilder til ett
-boligdata-datasett egnet for ML-trening. Hver rad er én (postnummer, år)-
-kombinasjon, og datasettet dekker 2002-2024.
+Ett prosjekt der jeg slår sammen flere offentlige norske datakilder til ett
+boligdata-datasett egnet for ML-trening. Hver rad er en
+kombinasjon av postnummer og år, og datasettet dekker 2002-2024.
 
 ## Hvorfor
 
-Jeg ville lære meg en skikkelig dataengineering-flyt: hente fra ulike API-er,
+Jeg ønsket å lære meg en skikkelig dataengineering-flyt: hente fra ulike API-er,
 vaske hvert datasett for seg, og så sy det hele sammen med kvalitetssjekker.
 Boligdata er et fint case fordi kildene er åpne, men formatene er helt
 forskjellige (WFS/GML, JSON-stat, TSV) og kommunesammenslåinger over tid gjør
@@ -31,6 +31,13 @@ joinene mer interessante enn de først ser ut.
 | SSB 12558 | Inntekt etter skatt (median) | JSON-stat |
 | SSB 09429 | Utdanningsnivå | JSON-stat |
 | SSB 07984 | Sysselsetting | JSON-stat |
+| SSB 10540 | Registrerte arbeidsledige (1999-2020) | JSON-stat (november-tall per år) |
+| SSB 09588 | Nettoinnflytting per kommune | JSON-stat |
+| SSB 06070 | Antall husholdninger + andel enslige | JSON-stat |
+| SSB 05940 | Fullførte og igangsatte boliger | JSON-stat (chunked) |
+| SSB 14674 | Generell eiendomsskattesats (promille) | JSON-stat (KOSTRA) |
+| Entur | Avstand til nærmeste togstasjon | Journey Planner GraphQL (bbox-paginert) |
+| MET Norge | Klima-normaler 1991-2020 (snitt-temp + nedbør) | Hardkodet fra MET-rapport, mappet via nærmeste storby |
 | Beregnet fra geometri | Areal, sentroide, avstand til storby | UTM 33N reprojection |
 | Matrikkelen-Bygningspunkt | Bygningstype per kommune | WFS (opt-in, treg) |
 
@@ -109,7 +116,15 @@ mot kjente postnummer (Oslo, Bergen, Trondheim, Stavanger).
 ```bash
 python source/export_csv.py                 # uten geometri, åpnes i Excel
 python source/export_csv.py --med-geometri  # tar med polygon som WKT
+
+# Eller kjør sammen med pipelinen:
+python source/pipeline.py --export-csv
+python source/pipeline.py --merge --export-csv  # bare merge + CSV
 ```
+
+CSV-en er ~25 MB pga tidsserie-formatet (77 694 rader). Excel kan åpne den,
+men det går raskere å bruke Parquet direkte fra Python når du jobber med
+dataene. CSV er mest nyttig for deling og enkel inspeksjon i Excel.
 
 ### Matrikkelen er opt-in
 
@@ -131,14 +146,16 @@ df_2024 = df[df["aar"] == 2024]  # filtrer til ett år hvis ønskelig
 
 ## Kolonner
 
-Totalt 47 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
+Totalt 57 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
 
 **Identifikatorer (6):** `postnummer`, `aar`, `geometry`, `kommune_nr`,
 `poststedsnavn`, `kommunenavn`
 
-**Geografi, statisk per postnummer (6):** `areal_km2`, `sentroide_lat`,
+**Geografi, statisk per postnummer (9):** `areal_km2`, `sentroide_lat`,
 `sentroide_lon`, `avstand_oslo_km`, `avstand_naermeste_storby_km`,
-`naermeste_storby`
+`naermeste_storby`, `temperatur_normal` (årlig snitt °C fra nærmeste
+MET-stasjon), `nedbor_normal_mm` (årsnedbør i mm), `avstand_togstasjon_km`
+(luftlinje til nærmeste togstasjon fra Entur)
 
 **Boliger og typer, per kommune-år (7):** `antall_boliger`,
 `modal_boligtype_kommune`, og fem `andel_bygntype_0X_kommune`-kolonner
@@ -160,6 +177,18 @@ Totalt 47 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
 **Demografi og økonomi (4):** `befolkning`, `inntekt_etter_skatt` (median),
 `antall_sysselsatte`, `befolkningstetthet` (kommunens befolkning / kommunens
 totale areal)
+
+**Arbeid og flytting (2):** `andel_arbeidsledige_kommune` (NB: data slutter
+2020 — SSB-statistikken ble lagt ned), `netto_innflytting_kommune`
+
+**Husholdninger (2):** `antall_husholdninger_kommune`, `andel_enslige_kommune`
+(én-person-husholdninger)
+
+**Boligbygging (2):** `fullforte_boliger_kommune`, `igangsatte_boliger_kommune`
+(årlig flyt, ikke beholdning — `antall_boliger` er beholdningen)
+
+**Skatt (1):** `eiendomsskatt_sats_kommune` (generell sats i promille,
+NaN for kommuner uten eiendomsskatt)
 
 **Matrikkelen (2, opt-in):** `antall_bygninger_kommune`,
 `modal_bygningstype_kommune`
@@ -190,8 +219,26 @@ med å bruke `merge` på filtrerte deler i stedet for å bevare NaN.
 Bare Kartverket og Bring er kritiske — uten postnummer-mappingen kan ikke
 datasettet bygges, så hvis den feiler stopper pipelinen. Alt det andre
 fortsetter ved feil, du får bare færre kolonner i output. Hver fase er
-idempotent (filer som finnes hoppes over), så du kan trygt avbryte og
-fortsette senere.
+idempotent, og cachede filer valideres (JSON-parses / GML lukker korrekt)
+før de godkjennes — så en avbrutt nedlasting blir hentet på nytt i stedet
+for å passere som "ferdig" og krasje senere.
+
+HTTP-kallene har retry med exponential backoff på 5xx/429/timeout og en
+hard øvre grense på respons-størrelsen (500 MB standard, satt lavere per
+kilde). Det holder en feilkonfigurert eller midlertidig nedlagt kilde fra
+å spise alt RAM-et.
+
+### Kjent skala-grense
+
+Pipelinen er testet med rundt 77 000 rader (kommune × år, 2002-2024). Hvis du
+trenger adresse-nivå (Rundt 58 millioner rader) holder ikke den nåværende
+Pandas-baserte implementasjonen — særlig `parse_jsonstat` (bygger Python-
+liste før DataFrame) og kryss-produkt-merge må refaktoreres til Polars
+eller DuckDB.
+
+Koden er ment for lokal kjøring. Hvis du senere skal eksponere den som
+en tjeneste, vil du i tillegg trenge: sentralisert logging, dependency-
+pinning, input-validering på CLI-args, og rate-limiting på utgående kall.
 
 ## ML-eksempel
 
@@ -239,6 +286,8 @@ outputen bør du kreditere kildene:
 - Kartverket / GeoNorge — NLOD 2.0 — *"Inneholder data fra Kartverket"*
 - Bring — fri bruk med attribusjon — *"Postnummerregister: Bring"*
 - SSB — CC BY 4.0 / NLOD 2.0 — *"Kilde: Statistisk sentralbyrå"*
+- Entur — NLOD 2.0 — *"Inneholder data fra Entur"*
+- Meteorologisk institutt — CC BY 4.0 — *"Klima-normaler fra MET Norge"*
 - Matrikkelen — NLOD 2.0 — *"Inneholder data fra Kartverket"*
 
 ## Etisk om publisering
@@ -248,3 +297,25 @@ identifisere svært små kommuner med få omsetninger. SSB håndterer dette ved
 å sensurere de mest sårbare verdiene (du ser dem som NaN i datasettet). Hvis
 du publiserer modeller eller analyser, ikke prøv å rekonstruere de sensurerte
 verdiene — det er bevisst skjult for å beskytte personvern.
+
+## Vurdert, men ikke inkludert
+
+Disse datakildene ble undersøkt men droppet i denne runden:
+
+**Udir grunnskolepoeng per kommune.** Skoleporten ble lagt ned i 2021 og
+data er nå på `udir.no/statistikk`, men det er ingen åpen API/CSV-feed for
+kommune-nivå grunnskolepoeng. SSBs egne tabeller (07495, 13717) har bare
+fylkes-/nasjonalnivå. Kan legges til hvis man laster ned Excel manuelt fra
+Udirs statistikkbank — det er bevisst utelatt for å holde pipelinen helt
+automatisk.
+
+**Statens vegvesen reisetid bil.** Krever NVDB-API med vegnett-graf og
+ruting, eller en ekstern ruter som OSRM. Gir lite ekstra utover
+`avstand_naermeste_storby_km` for bilavhengige kommuner — luftavstand er en
+god proxy i Norge der vei-grafen i stor grad følger geografien.
+
+**MET Norge høy-presisjons klimadata.** Vi har klima-normaler 1991-2020
+basert på de 6 storbyenes referansestasjoner, mappet via `naermeste_storby`.
+For mer presise kommune-spesifikke klimaserier (årlig snitt-temp og nedbør)
+trengs frost.met.no API med klient-ID og nærmeste-stasjon-mapping per
+kommune. Klient-ID er gratis men krever brukerregistrering.
