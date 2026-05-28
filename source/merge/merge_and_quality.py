@@ -7,9 +7,12 @@ at ML-modellen senere kan velge selv hvordan den vil håndtere det.
 
 Join-rekkefølge:
   1. Kartverket geometri + Bring-mapping (backbone)
-  2. SSB demografi
-  3. Eiendom Norge prisstatistikk
-  4. Matrikkelen (kun ved --include-matrikkelen)
+  2. Geofeatures (areal, sentroide, avstand til storby)
+  3. SSB (demografi, priser, byggeår, bruksareal)
+  4. Eiendom Norge prisstatistikk
+  5. Matrikkelen (kun ved --include-matrikkelen)
+
+Etter SSB-join beregnes `befolkningstetthet` = `befolkning / areal_km2`.
 
 Output:
   boligdata_final.parquet  — selve datasettet
@@ -41,6 +44,7 @@ def load_standardized() -> dict[str, pd.DataFrame | gpd.GeoDataFrame]:
     files = {
         "geometri": "postnummer_geometri.parquet",
         "mapping": "postnummer_kommune_mapping.parquet",
+        "geofeatures": "postnummer_geofeatures.parquet",
         "matrikkelen": "matrikkelen_aggregert.parquet",
         "ssb": "ssb_bolig_demografi.parquet",
         "eiendom_norge": "eiendom_norge_priser.parquet",
@@ -77,6 +81,12 @@ def merge_all(data: dict) -> gpd.GeoDataFrame:
         )
         _log("MERGE", {"kilde": "kartverket_mapping", "rader_etter": len(backbone)})
 
+    # Geofeatures joines på postnummer — beregnet fra polygonene, 100% dekning forventet
+    if data["geofeatures"] is not None:
+        before = backbone["postnummer"].isin(data["geofeatures"]["postnummer"]).mean()
+        backbone = backbone.merge(data["geofeatures"], on="postnummer", how="left")
+        _log("MERGE", {"kilde": "geofeatures", "dekning": f"{before:.1%}"})
+
     # Matrikkelen joines på kommune_nr — alle postnummer i samme kommune får
     # samme aggregerte verdier
     if data["matrikkelen"] is not None and "kommune_nr" in backbone.columns:
@@ -92,6 +102,18 @@ def merge_all(data: dict) -> gpd.GeoDataFrame:
         backbone = backbone.merge(ssb, on="postnummer", how="left")
         _log("MERGE", {"kilde": "ssb", "dekning": f"{before:.1%}"})
 
+    # Beregn befolkningstetthet på kommunenivå. SSBs befolkning er per kommune,
+    # så vi må aggregere postnummer-arealet til kommunearealet før vi deler.
+    # (Å bruke postnummer-areal direkte ville gitt kjempetall siden hele kommunens
+    # befolkning ville blitt delt på ett enkelt postnummer.)
+    if {"befolkning", "areal_km2", "kommune_nr"}.issubset(backbone.columns):
+        kommune_areal = backbone.groupby("kommune_nr")["areal_km2"].sum().rename("kommune_areal_km2")
+        backbone = backbone.merge(kommune_areal, on="kommune_nr", how="left")
+        areal = backbone["kommune_areal_km2"].where(backbone["kommune_areal_km2"] > 0)
+        backbone["befolkningstetthet"] = backbone["befolkning"] / areal
+        backbone = backbone.drop(columns=["kommune_areal_km2"])
+        _log("BEREGNET", {"kolonne": "befolkningstetthet", "dekning": f"{backbone['befolkningstetthet'].notna().mean():.1%}"})
+
     if data["eiendom_norge"] is not None:
         en = data["eiendom_norge"].drop(columns=["kommune_nr"], errors="ignore")
         before = backbone["postnummer"].isin(en["postnummer"]).mean()
@@ -105,7 +127,10 @@ def quality_check(df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Logg dekning per kolonne, flagg dårlige rader, finn IQR-outliers."""
     feature_cols = [
         c for c in df.columns
-        if c not in ("postnummer", "geometry", "poststedsnavn", "kommunenavn", "kommune_nr")
+        if c not in (
+            "postnummer", "geometry", "poststedsnavn", "kommunenavn", "kommune_nr",
+            "naermeste_storby",  # tekst-kolonne, ikke en numerisk feature
+        )
     ]
 
     coverage = {c: float(df[c].notna().mean()) for c in feature_cols}
@@ -121,7 +146,7 @@ def quality_check(df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     })
 
     # IQR med 3x (ikke standard 1.5x) — boligpriser har naturlig stor spredning
-    for col in ["median_pris_m2", "inntekt_etter_skatt"]:
+    for col in ["median_pris_m2", "pris_kvm_alle_kommune", "inntekt_etter_skatt", "befolkningstetthet"]:
         if col not in df.columns:
             continue
         q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)

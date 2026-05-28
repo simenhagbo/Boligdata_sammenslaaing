@@ -24,6 +24,7 @@ from standardize.standardize_kartverket import main as std_kartverket
 from standardize.standardize_ssb import main as std_ssb
 from standardize.standardize_eiendom_norge import main as std_eiendom_norge
 from standardize.standardize_matrikkelen import main as std_matrikkelen
+from standardize.standardize_geofeatures import main as std_geofeatures
 from merge.merge_and_quality import main as merge_all
 
 
@@ -52,8 +53,10 @@ def run_collect(include_matrikkelen: bool = False) -> None:
 
 
 def run_standardize(include_matrikkelen: bool = False) -> None:
-    # Kartverket må kjøres først — postnummer-mappingen brukes av de andre
+    # Kartverket må kjøres først — postnummer-mappingen brukes av de andre.
+    # Geofeatures avhenger av geometri-Parquet og må derfor komme etter Kartverket.
     _run("Standardisering — Kartverket", std_kartverket, critical=True)
+    _run("Standardisering — Geofeatures", std_geofeatures)
     _run("Standardisering — SSB", std_ssb)
     _run("Standardisering — Eiendom Norge", std_eiendom_norge)
     if include_matrikkelen:

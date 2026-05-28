@@ -16,8 +16,9 @@ er et fint case fordi kildene er åpne, men formatene er helt forskjellige
 |---|---|---|
 | Kartverket (GeoNorge) | Postnummer-polygoner | WFS, GML 3.2.1 |
 | Bring | Postnummer → kommune | TSV-fil med hele registeret |
-| SSB | Boliger, befolkning, inntekt | JSON-stat API (tabell 06265, 07459, 12558) |
+| SSB | Boliger, befolkning, inntekt, priser, byggeår, bruksareal | JSON-stat API (tabell 06265, 06035, 06266, 06513, 07459, 12558) |
 | Eiendom Norge | Pris per m² | Excel-fil fra nettsiden |
+| Beregnet fra geometri | Areal, sentroide, avstand til storby | Reprojection til UTM 33N |
 | Matrikkelen-Bygningspunkt | Bygningstype per kommune | WFS (opt-in, treg) |
 
 ## Mappestruktur
@@ -76,14 +77,34 @@ print(df.columns.tolist())
 
 ## Kolonner
 
-- `postnummer`, `kommune_nr`, `poststedsnavn`, `kommunenavn` — fra Kartverket/Bring
-- `geometry` — postnummerets polygon (EPSG:4326)
-- `antall_boliger`, `modal_boligtype_kommune` — fra SSB 06265
-- `befolkning` — fra SSB 07459
-- `inntekt_etter_skatt` — fra SSB 12558
-- `median_pris_m2` — fra Eiendom Norge (hvis Excel-filen er lastet ned)
-- `antall_bygninger_kommune`, `modal_bygningstype_kommune` — fra Matrikkelen (kun med `--include-matrikkelen`)
-- `data_kvalitet_flagg` — 1 hvis raden mangler over halvparten av verdiene
+Totalt 39 kolonner i sluttdatasett (40 hvis Eiendom Norge er inkludert).
+
+**Identifikatorer (5)** — Kartverket og Bring:
+`postnummer`, `geometry`, `kommune_nr`, `poststedsnavn`, `kommunenavn`
+
+**Geografi (6)** — beregnet fra polygonene:
+`areal_km2`, `sentroide_lat`, `sentroide_lon`, `avstand_oslo_km`, `avstand_naermeste_storby_km`, `naermeste_storby`
+
+**Boliger og typer (7)** — SSB 06265:
+`antall_boliger`, `modal_boligtype_kommune`, `andel_bygntype_01_kommune` ... `_05_kommune` (enebolig, tomannsbolig, rekkehus, blokk, bofellesskap)
+
+**Priser (5)** — SSB 06035:
+`pris_kvm_enebolig_kommune`, `pris_kvm_smaahus_kommune`, `pris_kvm_blokk_kommune`, `pris_kvm_alle_kommune` (vektet gj.snitt over typene), `antall_omsetninger_kommune`
+
+**Byggeår (6)** — SSB 06266 i fem perioder:
+`andel_byggeaar_for1946_kommune`, `_1946_1970`, `_1971_1990`, `_1991_2010`, `_etter2010_kommune`, `median_byggeaar_kommune`
+
+**Bruksareal (6)** — SSB 06513 i fem grupper:
+`andel_areal_under60_kommune`, `_60_99`, `_100_159`, `_160_249`, `_over250_kommune`, `median_bruksareal_kommune`
+
+**Demografi (3)** — SSB 07459, 12558 + beregnet:
+`befolkning`, `inntekt_etter_skatt`, `befolkningstetthet` (kommunens befolkning / kommunens totale areal)
+
+**Eiendom Norge (1, valgfri):** `median_pris_m2`
+
+**Matrikkelen (2, opt-in):** `antall_bygninger_kommune`, `modal_bygningstype_kommune`
+
+**Kvalitet (1):** `data_kvalitet_flagg` — 1 hvis raden mangler over halvparten av verdiene
 
 ## Ting jeg har lært underveis
 
@@ -124,10 +145,17 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 
 gdf = gpd.read_parquet("data/processed_data/final/boligdata_final.parquet")
-df = gdf[gdf["data_kvalitet_flagg"] == 0].dropna(subset=["median_pris_m2"])
+df = gdf[gdf["data_kvalitet_flagg"] == 0].dropna(subset=["pris_kvm_alle_kommune"])
 
-X = df[["antall_boliger", "befolkning", "inntekt_etter_skatt"]].fillna(0)
-y = df["median_pris_m2"]
+features = [
+    "befolkning", "inntekt_etter_skatt", "befolkningstetthet",
+    "avstand_oslo_km", "avstand_naermeste_storby_km",
+    "median_byggeaar_kommune", "median_bruksareal_kommune",
+    "andel_bygntype_04_kommune",  # andel blokkleiligheter
+    "antall_omsetninger_kommune",
+]
+X = df[features].fillna(df[features].median())
+y = df["pris_kvm_alle_kommune"]
 
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
 model = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_tr, y_tr)

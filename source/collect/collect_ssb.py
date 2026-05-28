@@ -1,9 +1,12 @@
 """
-Henter tre SSB-tabeller via JSON-stat API-et.
+Henter SSB-tabeller via JSON-stat API-et.
 
   06265 — antall boliger per type per kommune
   07459 — folkemengde per kommune
   12558 — inntekt etter skatt per kommune
+  06035 — selveierboliger: kvm-pris og antall omsetninger per boligtype per kommune
+  06266 — antall boliger per bygningstype og byggeår per kommune
+  06513 — antall boliger per bygningstype og bruksareal per kommune
 
 SSB leverer på kommunenivå; kobling til postnummer skjer i standardize-fasen.
 """
@@ -90,10 +93,57 @@ def fetch_inntekt() -> None:
     fetch_table("12558", query, "inntekt_12558.json")
 
 
+def fetch_priser() -> None:
+    # Boligtype: 01=enebolig, 02=småhus, 03=blokk. ContentsCode KvPris + Omsetninger.
+    # Små kommuner kan ha sensurerte verdier — det håndteres i std-fasen.
+    query = {
+        "query": [
+            {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Boligtype", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "ContentsCode", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+        ],
+        "response": {"format": "json-stat2"},
+    }
+    fetch_table("06035", query, "priser_06035.json")
+
+
+def fetch_byggeaar() -> None:
+    # BygnAr har 13 verdier (01=1900- ... 13=2021+, 99=ukjent). Vi slår sammen
+    # til fem perioder i std-fasen.
+    query = {
+        "query": [
+            {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "BygnType", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "BygnAr", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+        ],
+        "response": {"format": "json-stat2"},
+    }
+    fetch_table("06266", query, "byggeaar_06266.json")
+
+
+def fetch_bruksareal() -> None:
+    # BruksAreal har 15 grupper. Slås sammen til fem størrelser i std-fasen.
+    query = {
+        "query": [
+            {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "BygnType", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "BruksAreal", "selection": {"filter": "all", "values": ["*"]}},
+            {"code": "Tid", "selection": {"filter": "top", "values": ["1"]}},
+        ],
+        "response": {"format": "json-stat2"},
+    }
+    fetch_table("06513", query, "bruksareal_06513.json")
+
+
 SSB_FETCHERS = [
     ("Boliger per type (06265)", fetch_boliger_per_type),
     ("Folkemengde (07459)", fetch_folkemengde),
     ("Inntekt (12558)", fetch_inntekt),
+    ("Priser (06035)", fetch_priser),
+    ("Byggeår (06266)", fetch_byggeaar),
+    ("Bruksareal (06513)", fetch_bruksareal),
 ]
 
 
