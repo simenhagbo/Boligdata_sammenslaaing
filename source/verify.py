@@ -161,6 +161,62 @@ def main() -> None:
                      cov_2024 >= 0.90, f"{cov_2024:.1%}"):
             failures += 1
 
+    print("\n8. Makrodata (nasjonale, lik for alle kommuner i et gitt år):")
+    # KPI og styringsrente skal ha 100% dekning for alle år 2002-2024
+    for col in ("kpi_indeks", "kpi_endring_pct", "styringsrente"):
+        if col not in df.columns:
+            continue
+        cov = df[col].notna().mean()
+        if not check(f"{col} dekning 100%", cov >= 0.999, f"{cov:.1%}"):
+            failures += 1
+    # Hver makro-verdi skal være lik på tvers av postnummer for et gitt år
+    # (nasjonal data). Sjekk én år for å være sikker.
+    for col in ("kpi_indeks", "styringsrente"):
+        if col not in df.columns:
+            continue
+        unik_per_aar = df.groupby("aar")[col].nunique(dropna=True).max()
+        if not check(f"{col} unik per år", unik_per_aar <= 1,
+                     f"max {int(unik_per_aar)} verdier per år"):
+            failures += 1
+    # KPI skal være monotont stigende — Norge har ikke hatt deflasjon over år
+    if "kpi_indeks" in df.columns:
+        kpi_aarlig = df.drop_duplicates("aar")[["aar", "kpi_indeks"]].sort_values("aar")
+        monotont = (kpi_aarlig["kpi_indeks"].diff().dropna() > 0).all()
+        if not check("KPI monotont stigende 2002-2024", monotont):
+            failures += 1
+    # Spot-sjekk: KPI 2024 mot 2015 — Norge har hatt ~30% inflasjon på 9 år
+    if "kpi_indeks" in df.columns:
+        kpi_2015 = df[df["aar"] == 2015]["kpi_indeks"].iloc[0] if (df["aar"] == 2015).any() else None
+        kpi_2024 = df[df["aar"] == 2024]["kpi_indeks"].iloc[0] if (df["aar"] == 2024).any() else None
+        if kpi_2015 and kpi_2024:
+            if not check("KPI 2015=100 og 2024 i intervall 125-140",
+                         abs(kpi_2015 - 100) < 0.01 and 125 <= kpi_2024 <= 140,
+                         f"2015={kpi_2015:.1f}, 2024={kpi_2024:.1f}"):
+                failures += 1
+
+    print("\n9. Investerings-features (per kommune, lookahead-sikre):")
+    if "prisstigning_real_pct" in df.columns:
+        # Real prisstigning skal ha plausibelt spenn — typisk -40 til +60% per år
+        vals = df["prisstigning_real_pct"].dropna()
+        if not check("prisstigning_real_pct i [-60, 100]",
+                     vals.between(-60, 100).all() if len(vals) else True,
+                     f"min={vals.min():.1f}, max={vals.max():.1f}" if len(vals) else "tom"):
+            failures += 1
+    if "cagr_5aar_real_pct" in df.columns:
+        vals = df["cagr_5aar_real_pct"].dropna()
+        # 5-års CAGR er mer stabil — typisk -15 til +20% per år
+        if not check("cagr_5aar_real_pct i [-20, 25]",
+                     vals.between(-20, 25).all() if len(vals) else True,
+                     f"min={vals.min():.1f}, max={vals.max():.1f}" if len(vals) else "tom"):
+            failures += 1
+    if "volatilitet_5aar" in df.columns:
+        vals = df["volatilitet_5aar"].dropna()
+        # Volatilitet (log-return-std) skal være ikke-negativ og typisk <0.5
+        if not check("volatilitet_5aar i [0, 0.5]",
+                     vals.between(0, 0.5).all() if len(vals) else True,
+                     f"max={vals.max():.3f}" if len(vals) else "tom"):
+            failures += 1
+
     print("\n" + "=" * 60)
     if failures == 0:
         print("ALLE SJEKKER PASSERTE")

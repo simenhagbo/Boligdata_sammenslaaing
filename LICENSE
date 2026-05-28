@@ -36,10 +36,14 @@ terms:
       Free use with attribution to Bring as source
       https://www.bring.no/tjenester/adressetjenester/postnummer
 
-  * Statistisk sentralbyrå (tabeller 06035, 06070, 06265, 06266, 06513,
-    06913, 07984, 09429, 09588, 05940, 10540, 12558, 14674):
+  * Statistisk sentralbyrå (tabeller 03013, 05940, 06035, 06070, 06265,
+    06266, 06513, 06913, 07984, 09429, 09588, 10540, 10748, 12558, 14674):
       Creative Commons Attribution (CC BY 4.0) / NLOD 2.0
       https://www.ssb.no/
+
+  * Norges Bank (styringsrente via åpen statistikk-API):
+      Norsk lisens for offentlige data (NLOD) 2.0
+      https://data.norges-bank.no/
 
   * Entur (nasjonalt stoppestedregister via Journey Planner GraphQL):
       Norsk lisens for offentlige data (NLOD) 2.0

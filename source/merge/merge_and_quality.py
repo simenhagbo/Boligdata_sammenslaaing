@@ -7,11 +7,14 @@ mangler data for et gitt år — preprosessering kan filtrere eller imputere.
 
 Rekkefølge:
   1. Geometri + Bring-mapping → én rad per postnummer
-  2. Geofeatures → joinet på postnummer
-  3. Ekspander til postnummer × år (2002-2024)
-  4. SSB → joinet på (postnummer, aar)
-  5. Beregn befolkningstetthet på kommune-år nivå
-  6. Matrikkelen (opt-in, kun statisk per kommune)
+  2. Geofeatures + Entur (avstand til togstasjon) → joinet på postnummer
+  3. Matrikkelen (opt-in, kun statisk per kommune) → joinet på kommune_nr
+  4. Ekspander til postnummer × år (2002-2024)
+  5. SSB → joinet på (postnummer, aar)
+  6. Beregn befolkningstetthet på kommune-år nivå
+  7. Makrodata (KPI, styringsrente, boliglånsrente) → joinet på aar
+  8. Beregn investerings-avkastnings-features (real prisstigning, CAGR,
+     volatilitet, sharpe) per (kommune, aar) — alle lookahead-sikre.
 
 Output:
   boligdata_final.parquet
@@ -23,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 STD_DIR = Path(__file__).parents[2] / "data" / "processed_data" / "standardized"
@@ -57,6 +61,7 @@ def load_standardized() -> dict[str, pd.DataFrame | gpd.GeoDataFrame]:
         "matrikkelen": "matrikkelen_aggregert.parquet",  # opt-in
         "ssb": "ssb_bolig_demografi.parquet",
         "entur": "postnummer_entur.parquet",
+        "makrodata": "makrodata.parquet",
     }
     loaded = {}
     for key, fname in files.items():
@@ -164,7 +169,110 @@ def merge_all(data: dict) -> gpd.GeoDataFrame:
             "dekning": f"{backbone['befolkningstetthet'].notna().mean():.1%}",
         })
 
+    # Steg 6: makrodata (nasjonal, lik for alle kommuner i et gitt år)
+    if data["makrodata"] is not None:
+        makro = data["makrodata"]
+        before = backbone["aar"].isin(makro["aar"]).mean()
+        backbone = backbone.merge(makro, on="aar", how="left")
+        _log("MERGE", {"kilde": "makrodata", "dekning": f"{before:.1%}"})
+
+    # Steg 7: investerings-avkastnings-features
+    backbone = compute_investment_features(backbone)
+
     return backbone
+
+
+def compute_investment_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Beregn kapital-avkastnings-features per (kommune, år).
+
+    Output-kolonner (alle med suffix `_kommune`):
+      prisstigning_nominal_pct    Årlig nominal prisendring (kr/m²)
+      prisstigning_real_pct       Nominal minus KPI-inflasjon (realavkastning)
+      cagr_5aar_real_pct          5-års compound annual growth rate (real)
+      volatilitet_5aar            Std.avvik på log-returns siste 5 år
+      sharpe_5aar                 (cagr_5aar_real − styringsrente) / volatilitet
+
+    Look-ahead-sikkerhet: alle rullende vinduer ender ved år T (bruker
+    observasjoner t.o.m. T) og kan trygt brukes til å predikere år T+1.
+    Hvis du vil trene en modell som predikerer år T fra features ved T-1,
+    skift kolonnene én år når du splitter trening-/testdata.
+
+    Krever at `pris_kvm_alle_kommune`, `kpi_indeks` og `styringsrente`
+    er joinet inn først.
+    """
+    required = {"pris_kvm_alle_kommune", "kpi_indeks", "styringsrente",
+                "kommune_nr", "aar"}
+    if not required.issubset(df.columns):
+        _log("BEREGNET_HOPPET_OVER", {
+            "kolonne": "investerings_features",
+            "grunn": f"mangler {required - set(df.columns)}",
+        })
+        return df
+
+    # VIKTIG: alle investerings-features regnes på (kommune_nr, aar)-nivå
+    # FØR de spres til postnummer-radene. Datasettet har ~50 postnummer per
+    # kommune som deler samme makro-pris — hvis vi kjørte pct_change direkte
+    # på det ekspanderte datasettet ville vi sammenlignet samme år på tvers
+    # av postnummer og fått 0 for alle innen-året-sammenligninger.
+    base = (
+        df[["kommune_nr", "aar", "pris_kvm_alle_kommune",
+            "kpi_indeks", "styringsrente"]]
+        .drop_duplicates(["kommune_nr", "aar"])
+        .sort_values(["kommune_nr", "aar"])
+        .copy()
+    )
+
+    # Deflatér kvm-prisen til 2015-kroner. KPI er 2015=100, så
+    # real_pris = nominell * 100 / kpi_indeks gir prisen i 2015-kroner.
+    base["_pris_real"] = base["pris_kvm_alle_kommune"] * 100.0 / base["kpi_indeks"]
+
+    g = base.groupby("kommune_nr", group_keys=False)
+
+    # Årlig prisendring (nominal og real). pct_change innen kommune.
+    base["prisstigning_nominal_pct"] = g["pris_kvm_alle_kommune"].pct_change() * 100
+    base["prisstigning_real_pct"] = g["_pris_real"].pct_change() * 100
+
+    # Log-returns for volatilitet (additive over tid, gausssian-aktig).
+    # log(pris_t / pris_{t-1}). Bruker real prisen.
+    base["_log_return"] = np.log(base["_pris_real"] / g["_pris_real"].shift(1))
+
+    # 5-års rullende standardavvik. min_periods=3 sikrer at vi får verdi
+    # selv om noen år midt i serien mangler — men ikke for kommuner med
+    # bare 1-2 år historikk.
+    base["volatilitet_5aar"] = (
+        g["_log_return"]
+        .rolling(window=5, min_periods=3)
+        .std()
+        .reset_index(level=0, drop=True)
+    )
+
+    # 5-års CAGR på real pris: (pris_t / pris_{t-5}) ^ (1/5) - 1.
+    # Bruker shift(5) for å plukke prisen 5 år tidligere innen samme kommune.
+    pris_5y = g["_pris_real"].shift(5)
+    base["cagr_5aar_real_pct"] = (
+        (base["_pris_real"] / pris_5y) ** (1.0 / 5) - 1
+    ) * 100
+
+    # Sharpe-aktig ratio: (cagr - risikofri) / volatilitet. Risikofri er
+    # Norges Banks styringsrente (samme tid som CAGR-en gjelder for).
+    # Volatiliteten er i log-return-skala; vi gjør en grov annualisering
+    # ved å la den stå som den er (årlig log-return-std). Tolking er
+    # "risikojustert meravkastning" — høyere = bedre.
+    base["sharpe_5aar"] = (
+        (base["cagr_5aar_real_pct"] - base["styringsrente"]) / base["volatilitet_5aar"]
+    ).replace([np.inf, -np.inf], np.nan)
+
+    # Joine de nye kolonnene tilbake til hele tidsserie-DataFrame
+    new_cols = ["prisstigning_nominal_pct", "prisstigning_real_pct",
+                "cagr_5aar_real_pct", "volatilitet_5aar", "sharpe_5aar"]
+    df = df.merge(
+        base[["kommune_nr", "aar"] + new_cols],
+        on=["kommune_nr", "aar"], how="left",
+    )
+
+    coverage = {c: f"{df[c].notna().mean():.1%}" for c in new_cols}
+    _log("BEREGNET", {"investerings_features": coverage})
+    return df
 
 
 def quality_check(df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

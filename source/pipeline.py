@@ -24,11 +24,13 @@ from collect.collect_kartverket import main as collect_kartverket
 from collect.collect_matrikkelen import main as collect_matrikkelen
 from collect.collect_ssb import main as collect_ssb
 from collect.collect_entur import main as collect_entur
+from collect.collect_makrodata import main as collect_makrodata
 from standardize.standardize_kartverket import main as std_kartverket
 from standardize.standardize_ssb import main as std_ssb
 from standardize.standardize_matrikkelen import main as std_matrikkelen
 from standardize.standardize_geofeatures import main as std_geofeatures
 from standardize.standardize_entur import main as std_entur
+from standardize.standardize_makrodata import main as std_makrodata
 from merge.merge_and_quality import main as merge_all
 from export_csv import export as export_to_csv
 
@@ -62,6 +64,7 @@ def run_collect(include_matrikkelen: bool = False) -> None:
     _run("Innsamling — Kartverket", collect_kartverket, critical=True)
     _run("Innsamling — SSB", collect_ssb)
     _run("Innsamling — Entur", collect_entur)
+    _run("Innsamling — Makrodata", collect_makrodata)
     if include_matrikkelen:
         _run("Innsamling — Matrikkelen (treg)", collect_matrikkelen)
 
@@ -77,6 +80,7 @@ def run_standardize(include_matrikkelen: bool = False) -> None:
     _run("Standardisering — Geofeatures", std_geofeatures)
     _run("Standardisering — SSB", std_ssb)
     _run("Standardisering — Entur", std_entur)
+    _run("Standardisering — Makrodata", std_makrodata)
     if include_matrikkelen:
         _run("Standardisering — Matrikkelen", std_matrikkelen)
 

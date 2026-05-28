@@ -36,6 +36,9 @@ joinene mer interessante enn de først ser ut.
 | SSB 06070 | Antall husholdninger + andel enslige | JSON-stat |
 | SSB 05940 | Fullførte og igangsatte boliger | JSON-stat (chunked) |
 | SSB 14674 | Generell eiendomsskattesats (promille) | JSON-stat (KOSTRA) |
+| SSB 03013 | Konsumprisindeks (KPI, 2015=100) | JSON-stat (månedlig → årssnitt) |
+| SSB 10748 | Boliglånsrente, husholdninger, totalt | JSON-stat (månedlig → årssnitt, fra 2014) |
+| Norges Bank | Styringsrente årssnitt | SDMX-JSON (åpen, ingen auth) |
 | Entur | Avstand til nærmeste togstasjon | Journey Planner GraphQL (bbox-paginert) |
 | MET Norge | Klima-normaler 1991-2020 (snitt-temp + nedbør) | Hardkodet fra MET-rapport, mappet via nærmeste storby |
 | Beregnet fra geometri | Areal, sentroide, avstand til storby | UTM 33N reprojection |
@@ -146,7 +149,7 @@ df_2024 = df[df["aar"] == 2024]  # filtrer til ett år hvis ønskelig
 
 ## Kolonner
 
-Totalt 57 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
+Totalt 66 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
 
 **Identifikatorer (6):** `postnummer`, `aar`, `geometry`, `kommune_nr`,
 `poststedsnavn`, `kommunenavn`
@@ -190,11 +193,37 @@ totale areal)
 **Skatt (1):** `eiendomsskatt_sats_kommune` (generell sats i promille,
 NaN for kommuner uten eiendomsskatt)
 
+**Makro, nasjonalt per år (4):** `kpi_indeks` (SSB 03013, 2015=100),
+`kpi_endring_pct` (årlig inflasjon), `styringsrente` (Norges Bank årssnitt),
+`boliglaansrente` (SSB 10748 årssnitt, NaN før 2014)
+
+**Investerings-features, per kommune-år (5):**
+`prisstigning_nominal_pct` (årlig endring i kvm-pris),
+`prisstigning_real_pct` (nominell minus KPI-inflasjon),
+`cagr_5aar_real_pct` (5-års compound annual growth rate, real),
+`volatilitet_5aar` (std.avvik på log-returns siste 5 år),
+`sharpe_5aar` ((CAGR − styringsrente) / volatilitet)
+
 **Matrikkelen (2, opt-in):** `antall_bygninger_kommune`,
 `modal_bygningstype_kommune`
 
 **Kvalitet (1):** `data_kvalitet_flagg` — 1 hvis raden mangler over halvparten
 av verdiene (typisk eldre år eller små kommuner)
+
+### Om investerings-features
+
+`prisstigning_*` og `volatilitet_5aar` er **lookahead-sikre**: en rullende
+beregning ved år T bruker bare observasjoner t.o.m. år T, så featuren kan
+trygt brukes til å predikere år T+1 uten å lekke fremtidig informasjon.
+For å trene en modell som predikerer år T fra features ved T-1, skift
+kolonnene én år når du splitter trening-/testdata.
+
+`sharpe_5aar` er en kapital-only Sharpe-aktig ratio — den måler
+risikojustert real prisavkastning over 5 år versus styringsrente. Den
+inkluderer **ikke** leieinntekt, drift, eller skatt, så den gir et
+"hvor var bolig en god verdiappresiering-investering?"-svar, ikke full ROI.
+Datasettet kan utvides til full ROI senere ved å legge til antakelser om
+leieyield (se LICENSE-fil for fremtidig arbeid).
 
 ## Ting som var lærerikt
 
@@ -286,6 +315,7 @@ outputen bør du kreditere kildene:
 - Kartverket / GeoNorge — NLOD 2.0 — *"Inneholder data fra Kartverket"*
 - Bring — fri bruk med attribusjon — *"Postnummerregister: Bring"*
 - SSB — CC BY 4.0 / NLOD 2.0 — *"Kilde: Statistisk sentralbyrå"*
+- Norges Bank — NLOD 2.0 — *"Styringsrente: Norges Bank"*
 - Entur — NLOD 2.0 — *"Inneholder data fra Entur"*
 - Meteorologisk institutt — CC BY 4.0 — *"Klima-normaler fra MET Norge"*
 - Matrikkelen — NLOD 2.0 — *"Inneholder data fra Kartverket"*
