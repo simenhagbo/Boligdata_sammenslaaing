@@ -39,3 +39,6 @@ desktop.ini
 *.local.md
 NOTES.md
 .claude/
+
+# Hemmeligheter — aldri commit
+.env

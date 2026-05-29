@@ -62,6 +62,7 @@ def load_standardized() -> dict[str, pd.DataFrame | gpd.GeoDataFrame]:
         "ssb": "ssb_bolig_demografi.parquet",
         "entur": "postnummer_entur.parquet",
         "makrodata": "makrodata.parquet",
+        "met_frost": "postnummer_met_frost.parquet",  # opt-in (krever FROST_CLIENT_ID)
     }
     loaded = {}
     for key, fname in files.items():
@@ -116,6 +117,15 @@ def merge_all(data: dict) -> gpd.GeoDataFrame:
         before = backbone["postnummer"].isin(data["entur"]["postnummer"]).mean()
         backbone = backbone.merge(data["entur"], on="postnummer", how="left")
         _log("MERGE", {"kilde": "entur", "dekning": f"{before:.1%}"})
+
+    if data["met_frost"] is not None:
+        # MET Frost klima-normaler (statisk per postnummer). Joinet før
+        # tidsserie-ekspansjonen så verdiene repeteres automatisk per år.
+        # Hvis Frost ikke er aktivert (ingen klient-ID) er filen None og
+        # vi beholder bare den storby-baserte klima-proxyen fra geofeatures.
+        before = backbone["postnummer"].isin(data["met_frost"]["postnummer"]).mean()
+        backbone = backbone.merge(data["met_frost"], on="postnummer", how="left")
+        _log("MERGE", {"kilde": "met_frost", "dekning": f"{before:.1%}"})
 
     if data["matrikkelen"] is not None and "kommune_nr" in backbone.columns:
         # Matrikkelen er aggregert per kommune — alle postnummer i samme

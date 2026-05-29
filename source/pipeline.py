@@ -25,12 +25,14 @@ from collect.collect_matrikkelen import main as collect_matrikkelen
 from collect.collect_ssb import main as collect_ssb
 from collect.collect_entur import main as collect_entur
 from collect.collect_makrodata import main as collect_makrodata
+from collect.collect_met_frost import main as collect_met_frost
 from standardize.standardize_kartverket import main as std_kartverket
 from standardize.standardize_ssb import main as std_ssb
 from standardize.standardize_matrikkelen import main as std_matrikkelen
 from standardize.standardize_geofeatures import main as std_geofeatures
 from standardize.standardize_entur import main as std_entur
 from standardize.standardize_makrodata import main as std_makrodata
+from standardize.standardize_met_frost import main as std_met_frost
 from merge.merge_and_quality import main as merge_all
 from export_csv import export as export_to_csv
 
@@ -65,13 +67,13 @@ def run_collect(include_matrikkelen: bool = False) -> None:
     _run("Innsamling — SSB", collect_ssb)
     _run("Innsamling — Entur", collect_entur)
     _run("Innsamling — Makrodata", collect_makrodata)
+    _run("Innsamling — MET Frost (opt-in via FROST_CLIENT_ID)", collect_met_frost)
     if include_matrikkelen:
         _run("Innsamling — Matrikkelen (treg)", collect_matrikkelen)
 
 
 def run_standardize(include_matrikkelen: bool = False) -> None:
     """Vask og normaliser rådata til Parquet med felles nøkler.
-
     Kartverket må kjøres først fordi postnummer-kommune-mappingen brukes som
     join-nøkkel av de andre kildene. Geofeatures avhenger av geometri-
     Parquet og må derfor også komme etter Kartverket.
@@ -81,6 +83,7 @@ def run_standardize(include_matrikkelen: bool = False) -> None:
     _run("Standardisering — SSB", std_ssb)
     _run("Standardisering — Entur", std_entur)
     _run("Standardisering — Makrodata", std_makrodata)
+    _run("Standardisering — MET Frost", std_met_frost)
     if include_matrikkelen:
         _run("Standardisering — Matrikkelen", std_matrikkelen)
 

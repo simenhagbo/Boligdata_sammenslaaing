@@ -1,17 +1,17 @@
 # Boligdata sammenslåing
 
-> **NB:** Koden og dokumentasjonen i dette repoet er skrevet med hjelp av
-> KI-verktøy (Claude/Anthropic). Alt innhold er gjennomgått, men det kan fortsatt
-> finnes feil eller logiske brister. Bruk gjerne datasettet, men ikke uten å
-> verifisere det selv hvis du baserer noe viktig på det.
+> **NB:** Dette repoet er produsert sammen med
+> Claude Code. Alt innhold er gjennomgått, men det kan fortsatt
+> finnes feil eller logiske brister. Ved bruk av datasettet,
+> verifiser det selv dersom du baserer noe viktig på det.
 
-Ett prosjekt der jeg slår sammen flere offentlige norske datakilder til ett
-boligdata-datasett egnet for ML-trening. Hver rad er en
+Ett prosjekt der jeg bruker flere offentlige norske datakilder til ett
+å produsere ett boligdata-datasett egnet for ML-trening. Hver rad er en
 kombinasjon av postnummer og år, og datasettet dekker 2002-2024.
 
 ## Hvorfor
 
-Jeg ønsket å lære meg en skikkelig dataengineering-flyt: hente fra ulike API-er,
+Jeg ønsket å lære meg en skikkelig dataengineering-flyt som å hente data fra ulike API-er,
 vaske hvert datasett for seg, og så sy det hele sammen med kvalitetssjekker.
 Boligdata er et fint case fordi kildene er åpne, men formatene er helt
 forskjellige (WFS/GML, JSON-stat, TSV) og kommunesammenslåinger over tid gjør
@@ -41,13 +41,14 @@ joinene mer interessante enn de først ser ut.
 | Norges Bank | Styringsrente årssnitt | SDMX-JSON (åpen, ingen auth) |
 | Entur | Avstand til nærmeste togstasjon | Journey Planner GraphQL (bbox-paginert) |
 | MET Norge | Klima-normaler 1991-2020 (snitt-temp + nedbør) | Hardkodet fra MET-rapport, mappet via nærmeste storby |
+| MET Frost-API | Klima-normaler per værstasjon | Frost REST-API, mappet til nærmeste stasjon (opt-in, krever gratis klient-ID) |
 | Beregnet fra geometri | Areal, sentroide, avstand til storby | UTM 33N reprojection |
 | Matrikkelen-Bygningspunkt | Bygningstype per kommune | WFS (opt-in, treg) |
 
 ## Om datakvalitet
 
-**Tidsserie.** Datasettet er 3378 postnummer × 23 år = ~77 700 rader. SSB
-publiserer på kommunenivå — alle postnummer i samme kommune deler de samme
+**Tidsserie.** Datasettet er 3378 postnummer × 23 år = 77 694 rader. SSB
+publiserer data på kommunenivå — alle postnummer i samme kommune deler de samme
 SSB-verdiene for et gitt år. Geo-features (areal, sentroide, avstand) er
 postnummer-spesifikke og statiske over år.
 
@@ -57,10 +58,9 @@ kommunekoder mens vi mapper til 2024-koder. Resultatet er at pris- og
 inntektsdekning typisk er ~30% før 2020 og ~95% i 2024. Det går an å fikse
 ved å hente SSBs kommune-historikk, men det er et større prosjekt.
 
-**Prisene er kommunenivå, ikke postnummer-nivå.** Open SSB-data går bare så
-langt. Eiendom Norges abonnementsprodukter har by/region-nivå data (også
-grovere enn kommune for små områder), Finn.no har postnummer men kan ikke
-scrapes lovlig, og SSB Microdata krever forskningssøknad. For ML betyr dette:
+**Prisene er kommunenivå, ikke postnummer-nivå.** Åpen SSB-data viser kun kommune nivå. Eiendom Norges abonnementsprodukter tilbyr by/region-nivå data (også
+grovere enn kommune for små områder), Finn.no har postnummer, men kan ikke
+skrapes lovlig, og SSB Microdata krever forskningssøknad. For ML betyr dette:
 **splitt train/test på `kommune_nr`, ikke postnummer** — ellers lekker prisen
 via kommunen og R² blir kunstig høy.
 
@@ -104,6 +104,25 @@ python source/pipeline.py --standardize   # bare vask
 python source/pipeline.py --merge         # bare slå sammen
 ```
 
+### Mer presise klima-features (valgfritt)
+
+Dagens klima-features (`temperatur_normal`, `nedbor_normal_mm`) bruker
+verdier for nærmeste storby som proxy. For mer presise tall fra MET Norges
+Frost-API:
+
+1. Registrer en gratis konto på
+   [frost.met.no/auth/requestCredentials](https://frost.met.no/auth/requestCredentials.html)
+2. Kopier `.env.example` til `.env` og lim inn klient-ID-en din
+3. Kjør pipelinen igjen — den henter klima-normaler (1991-2020) for hver
+   norsk værstasjon og mapper hvert postnummer til nærmeste stasjon
+
+Resultatet er fire nye kolonner: `temperatur_normal_frost`,
+`nedbor_normal_frost_mm`, `met_stasjon_id`, `met_stasjon_avstand_km`. De
+proxy-baserte kolonnene beholdes som fallback for kompatibilitet.
+
+Hvis du ikke setter en ID, hopper pipelinen Frost-fasen gracefully over —
+ingenting annet endres.
+
 ### Verifiser datasettet
 
 ```bash
@@ -125,7 +144,7 @@ python source/pipeline.py --export-csv
 python source/pipeline.py --merge --export-csv  # bare merge + CSV
 ```
 
-CSV-en er ~25 MB pga tidsserie-formatet (77 694 rader). Excel kan åpne den,
+CSV-en er ca 25 MB pga tidsserie-formatet (77 694 rader). Excel kan åpne den,
 men det går raskere å bruke Parquet direkte fra Python når du jobber med
 dataene. CSV er mest nyttig for deling og enkel inspeksjon i Excel.
 
@@ -137,7 +156,7 @@ python source/pipeline.py --include-matrikkelen
 
 Bygningspunkt-WFS-en gir bare bygningstype og kommunenummer (ikke areal eller
 byggeår — det krever lisens). Og siden CQL_FILTER blir ignorert må man paginere
-gjennom alle 4,4 millioner bygg i Norge, så det tar omtrent en time.
+gjennom alle 4,4 millioner bygg i Norge.
 
 ### Les datasettet
 
@@ -149,7 +168,8 @@ df_2024 = df[df["aar"] == 2024]  # filtrer til ett år hvis ønskelig
 
 ## Kolonner
 
-Totalt 66 kolonner. Hver rad er én (postnummer, år)-kombinasjon.
+Totalt 66 kolonner (eller 70 med MET Frost aktivert). Hver rad er én
+(postnummer, år)-kombinasjon.
 
 **Identifikatorer (6):** `postnummer`, `aar`, `geometry`, `kommune_nr`,
 `poststedsnavn`, `kommunenavn`
@@ -206,6 +226,11 @@ NaN for kommuner uten eiendomsskatt)
 
 **Matrikkelen (2, opt-in):** `antall_bygninger_kommune`,
 `modal_bygningstype_kommune`
+
+**MET Frost (4, opt-in):** `temperatur_normal_frost`,
+`nedbor_normal_frost_mm`, `met_stasjon_id`, `met_stasjon_avstand_km` —
+mer presise klima-normaler basert på faktisk værstasjon i stedet for
+storby-proxy. Krever gratis Frost-klient-ID (se "Mer presise klima-features").
 
 **Kvalitet (1):** `data_kvalitet_flagg` — 1 hvis raden mangler over halvparten
 av verdiene (typisk eldre år eller små kommuner)
@@ -344,8 +369,7 @@ ruting, eller en ekstern ruter som OSRM. Gir lite ekstra utover
 `avstand_naermeste_storby_km` for bilavhengige kommuner — luftavstand er en
 god proxy i Norge der vei-grafen i stor grad følger geografien.
 
-**MET Norge høy-presisjons klimadata.** Vi har klima-normaler 1991-2020
-basert på de 6 storbyenes referansestasjoner, mappet via `naermeste_storby`.
-For mer presise kommune-spesifikke klimaserier (årlig snitt-temp og nedbør)
-trengs frost.met.no API med klient-ID og nærmeste-stasjon-mapping per
-kommune. Klient-ID er gratis men krever brukerregistrering.
+**Solgt.no eiendomsdata.** Solgtapis.no har ingen reell åpen API — bare en
+default Swagger-installasjon som peker til en demo. Postnummer-nivå
+priser ville måtte hentes via SSB Microdata (forskningsadgang) eller
+abonnement på Eiendom Norge.
