@@ -26,7 +26,9 @@ from collect.collect_ssb import main as collect_ssb
 from collect.collect_entur import main as collect_entur
 from collect.collect_makrodata import main as collect_makrodata
 from collect.collect_met_frost import main as collect_met_frost
+from collect.collect_kommune_historikk import main as collect_kommune_historikk
 from standardize.standardize_kartverket import main as std_kartverket
+from standardize.standardize_kommune_historikk import main as std_kommune_historikk
 from standardize.standardize_ssb import main as std_ssb
 from standardize.standardize_matrikkelen import main as std_matrikkelen
 from standardize.standardize_geofeatures import main as std_geofeatures
@@ -64,6 +66,7 @@ def run_collect(include_matrikkelen: bool = False) -> None:
     kilder kobles inn via postnummer-mappingen derfra.
     """
     _run("Innsamling — Kartverket", collect_kartverket, critical=True)
+    _run("Innsamling — Kommune-historikk (Klass)", collect_kommune_historikk)
     _run("Innsamling — SSB", collect_ssb)
     _run("Innsamling — Entur", collect_entur)
     _run("Innsamling — Makrodata", collect_makrodata)
@@ -80,6 +83,9 @@ def run_standardize(include_matrikkelen: bool = False) -> None:
     """
     _run("Standardisering — Kartverket", std_kartverket, critical=True)
     _run("Standardisering — Geofeatures", std_geofeatures)
+    # Kommune-historikk må bygges før SSB siden SSB bruker mappingen til
+    # å re-aggregere eldre år til 2024-koder
+    _run("Standardisering — Kommune-historikk", std_kommune_historikk)
     _run("Standardisering — SSB", std_ssb)
     _run("Standardisering — Entur", std_entur)
     _run("Standardisering — Makrodata", std_makrodata)

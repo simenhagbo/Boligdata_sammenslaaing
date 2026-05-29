@@ -1,12 +1,15 @@
 """
-Parser SSB-rådata til ett tidsserie-Parquet på (postnummer, år)-format.
+Parser SSB-rådata til ett kommune × år-Parquet.
 
-Alle postnummer i samme kommune deler SSB-verdiene for et gitt år — det er
-en bevisst forenkling siden SSB ikke publiserer på postnummer-nivå.
+SSB publiserer på kommunenivå, så denne filen er på (kommune_nr, år)-grain.
+Denormaliseringen til postnummer skjer i merge-fasen. Hvis historikk-mapping
+finnes, re-aggregeres eldre år med datidens kommunekoder til 2024-koder
+(se standardize_kommune_historikk).
 """
 
 import itertools
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +18,10 @@ import pandas as pd
 RAW_DIR = Path(__file__).parents[2] / "data" / "raw_data" / "ssb"
 STD_DIR = Path(__file__).parents[2] / "data" / "processed_data" / "standardized"
 STD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Gjør søsken-modulen importerbar både ved direktekjøring og via pipeline
+sys.path.insert(0, str(Path(__file__).parent))
+from standardize_kommune_historikk import reaggregate_to_2024  # noqa: E402
 
 
 # ----- JSON-stat parsing -----
@@ -70,26 +77,6 @@ def _find_col(df: pd.DataFrame, name_lower: str) -> str:
         if c.lower() == name_lower:
             return c
     raise KeyError(f"Fant ikke kolonne '{name_lower}' i {list(df.columns)}")
-
-
-# ----- Backbone: postnummer × år -----
-
-def load_backbone() -> pd.DataFrame:
-    """Bygger postnummer × år-grunnlaget (5122 postnummer × 23 år).
-
-    Merk: vi bruker Bring-mappingen (5122 postnummer) som er bredere enn
-    geometri-Parquet (3378). I merge-fasen filtreres det til de 3378 med
-    polygon-geometri, så de "ekstra" postnumrene her (postboks-postnummer
-    uten geografisk område) faller naturlig fra.
-    """
-    mapping_path = STD_DIR / "postnummer_kommune_mapping.parquet"
-    if not mapping_path.exists():
-        raise FileNotFoundError("Kjør standardize_kartverket.py før denne")
-    mapping = pd.read_parquet(mapping_path)[["postnummer", "kommune_nr"]]
-
-    # Kryss-produkt med år 2002-2024 — gir én rad per (postnummer, år)
-    aar = pd.DataFrame({"aar": list(range(2002, 2025))})
-    return mapping.merge(aar, how="cross")
 
 
 # ----- Boliger per type (06265) -----
@@ -484,6 +471,9 @@ def standardize_arbeidsledighet() -> pd.DataFrame:
     # `2020M11` → 2020. Tar bare de første 4 tegnene.
     df["aar"] = df[tid_col].astype(str).str[:4].astype(int)
     df = df.rename(columns={region_col: "kommune_nr", "value": "andel_arbeidsledige_kommune"})
+    # SSB oppgir dette i prosent (0-100). Del på 100 så det blir en brøk (0-1),
+    # konsistent med de andre andel_*-kolonnene i datasettet.
+    df["andel_arbeidsledige_kommune"] = df["andel_arbeidsledige_kommune"] / 100.0
     df["kommune_nr"] = df["kommune_nr"].astype(str).str.zfill(4)
     return df[["kommune_nr", "aar", "andel_arbeidsledige_kommune"]].drop_duplicates(
         ["kommune_nr", "aar"]
@@ -649,10 +639,11 @@ def standardize_sysselsetting() -> pd.DataFrame:
 # ----- Main -----
 
 def main() -> None:
-    # Bygg postnummer × år-grunnlaget som alle SSB-delene blir merget på
+    # Produserer SSB-data på kommune × år-grain. Denormaliseringen til
+    # postnummer × år skjer i merge-fasen — det holder denne filen liten
+    # (~8k rader i stedet for ~77k) og gjør Fase 3 (historisk kommune-
+    # mapping) enklere siden den naturlig opererer på kommune-nivå.
     print("=== Standardisering: SSB (tidsserie 2002-2024) ===")
-    backbone = load_backbone()
-    print(f"  Backbone: {len(backbone):,} rader (postnummer × år)")
 
     # Kjør hver standardize-funksjon og samle resultatene i en dict
     parts = {
@@ -673,17 +664,31 @@ def main() -> None:
     for name, p in parts.items():
         print(f"  {name}: {len(p):,} kommune-år rader, {len(p.columns)} kol")
 
-    # Join alle på (kommune_nr, aar). Hver del er allerede på riktig nivå.
-    df = backbone.copy()
+    # Bygg kommune × år-grunnlaget fra unionen av alle (kommune_nr, aar)-par
+    # som finnes i delene. Outer-merge sikrer at vi ikke mister kommune-år
+    # som bare har data i én av kildene.
+    df: pd.DataFrame | None = None
     for name, p in parts.items():
         if p.empty:
             continue
-        df = df.merge(p, on=["kommune_nr", "aar"], how="left")
+        df = p.copy() if df is None else df.merge(p, on=["kommune_nr", "aar"], how="outer")
 
-    # Skriv samlet output
+    if df is None:
+        raise RuntimeError("Ingen SSB-deler hadde data — kan ikke bygge output")
+
+    # Re-aggreger eldre år (historiske kommunekoder) til 2024-koder hvis
+    # historikk-mappingen finnes. Uten den beholdes kodene som de er.
+    print("  Anvender historisk kommune-mapping...")
+    df = reaggregate_to_2024(df)
+
+    # Sorter for forutsigbar rekkefølge i output-filen
+    df = df.sort_values(["kommune_nr", "aar"]).reset_index(drop=True)
+
+    # Skriv samlet output (kommune × år)
     out = STD_DIR / "ssb_bolig_demografi.parquet"
     df.to_parquet(out, index=False)
-    print(f"\n  ssb_bolig_demografi.parquet: {len(df):,} rader, {len(df.columns)} kolonner")
+    print(f"\n  ssb_bolig_demografi.parquet: {len(df):,} rader (kommune × år), "
+          f"{len(df.columns)} kolonner")
     # Vis dekning på de viktigste kolonnene
     for col in [
         "antall_boliger", "befolkning", "inntekt_etter_skatt",

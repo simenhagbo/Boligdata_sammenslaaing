@@ -88,6 +88,14 @@ def main() -> None:
                      f"min={valid.min():.4f}, max={valid.max():.4f}"):
             failures += 1
 
+    # Alle andel_*-kolonner skal være brøker i [0, 1] — fanger skala-feil der
+    # en kolonne ved en feil ligger i prosent (0-100) i stedet for brøk.
+    andel_cols = [c for c in df.columns if c.startswith("andel_")]
+    over_en = [c for c in andel_cols if (df[c].dropna() > 1.001).any()]
+    if not check("Alle andel_*-kolonner er brøker i [0, 1]",
+                 not over_en, str(over_en) if over_en else ""):
+        failures += 1
+
     print("\n3. SSB-verdier konsistente innen (kommune, år):")
     # SSB-data er på kommunenivå, så alle ~10 postnummer i samme kommune
     # skal ha identiske verdier for et gitt år. Hvis en kolonne har flere

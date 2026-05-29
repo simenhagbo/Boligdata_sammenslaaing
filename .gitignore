@@ -40,5 +40,8 @@ desktop.ini
 NOTES.md
 .claude/
 
+# Prosjektdokumentasjon for Claude Cowork — ikke en del av repoet
+docs/
+
 # Hemmeligheter — aldri commit
 .env

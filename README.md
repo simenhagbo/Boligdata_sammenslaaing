@@ -2,11 +2,11 @@
 
 > **NB:** Dette repoet er produsert sammen med
 > Claude Code. Alt innhold er gjennomgått, men det kan fortsatt
-> finnes feil eller logiske brister. Ved bruk av datasettet,
+> inneholde feil eller logiske brister. Ved bruk av datasettet,
 > verifiser det selv dersom du baserer noe viktig på det.
 
-Ett prosjekt der jeg bruker flere offentlige norske datakilder til ett
-å produsere ett boligdata-datasett egnet for ML-trening. Hver rad er en
+Ett prosjekt der jeg henter data fra flere offentlige norske datakilder til
+å produsere ett datasett med boligdata egnet for ML-trening. Prosessen ved innhenting, datarensing og kombinering av dataene er gjort sammen med Claude Code. Hver rad representerer en
 kombinasjon av postnummer og år, og datasettet dekker 2002-2024.
 
 ## Hvorfor
@@ -55,14 +55,14 @@ postnummer-spesifikke og statiske over år.
 **Eldre år har dårligere dekning.** Norge har gjennomgått flere
 kommunesammenslåinger (særlig 2020), og SSB rapporterer eldre år med datidens
 kommunekoder mens vi mapper til 2024-koder. Resultatet er at pris- og
-inntektsdekning typisk er ~30% før 2020 og ~95% i 2024. Det går an å fikse
+inntektsdekning typisk er rundt 30% før 2020 og 95% i 2024. Det går an å fikse
 ved å hente SSBs kommune-historikk, men det er et større prosjekt.
 
 **Prisene er kommunenivå, ikke postnummer-nivå.** Åpen SSB-data viser kun kommune nivå. Eiendom Norges abonnementsprodukter tilbyr by/region-nivå data (også
 grovere enn kommune for små områder), Finn.no har postnummer, men kan ikke
 skrapes lovlig, og SSB Microdata krever forskningssøknad. For ML betyr dette:
 **splitt train/test på `kommune_nr`, ikke postnummer** — ellers lekker prisen
-via kommunen og R² blir kunstig høy.
+via kommunen og R2 blir kunstig høy.
 
 **SSB sensurerer små kommuner.** For 06035 (priser) settes både kvm-pris og
 omsetninger til NaN/0 hvis kommunen har for få salg i et år. Vi har håndtert
@@ -168,8 +168,7 @@ df_2024 = df[df["aar"] == 2024]  # filtrer til ett år hvis ønskelig
 
 ## Kolonner
 
-Totalt 66 kolonner (eller 70 med MET Frost aktivert). Hver rad er én
-(postnummer, år)-kombinasjon.
+Totalt 66 kolonner (70 med MET Frost aktivert). Hver rad er én kombinasjon av postnummer og kommune.
 
 **Identifikatorer (6):** `postnummer`, `aar`, `geometry`, `kommune_nr`,
 `poststedsnavn`, `kommunenavn`
@@ -345,31 +344,5 @@ outputen bør du kreditere kildene:
 - Meteorologisk institutt — CC BY 4.0 — *"Klima-normaler fra MET Norge"*
 - Matrikkelen — NLOD 2.0 — *"Inneholder data fra Kartverket"*
 
-## Etisk om publisering
 
-Datakildene er åpne, men de aggregerte dataene per kommune kan i prinsippet
-identifisere svært små kommuner med få omsetninger. SSB håndterer dette ved
-å sensurere de mest sårbare verdiene (du ser dem som NaN i datasettet). Hvis
-du publiserer modeller eller analyser, ikke prøv å rekonstruere de sensurerte
-verdiene — det er bevisst skjult for å beskytte personvern.
 
-## Vurdert, men ikke inkludert
-
-Disse datakildene ble undersøkt men droppet i denne runden:
-
-**Udir grunnskolepoeng per kommune.** Skoleporten ble lagt ned i 2021 og
-data er nå på `udir.no/statistikk`, men det er ingen åpen API/CSV-feed for
-kommune-nivå grunnskolepoeng. SSBs egne tabeller (07495, 13717) har bare
-fylkes-/nasjonalnivå. Kan legges til hvis man laster ned Excel manuelt fra
-Udirs statistikkbank — det er bevisst utelatt for å holde pipelinen helt
-automatisk.
-
-**Statens vegvesen reisetid bil.** Krever NVDB-API med vegnett-graf og
-ruting, eller en ekstern ruter som OSRM. Gir lite ekstra utover
-`avstand_naermeste_storby_km` for bilavhengige kommuner — luftavstand er en
-god proxy i Norge der vei-grafen i stor grad følger geografien.
-
-**Solgt.no eiendomsdata.** Solgtapis.no har ingen reell åpen API — bare en
-default Swagger-installasjon som peker til en demo. Postnummer-nivå
-priser ville måtte hentes via SSB Microdata (forskningsadgang) eller
-abonnement på Eiendom Norge.

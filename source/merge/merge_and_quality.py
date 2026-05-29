@@ -147,16 +147,17 @@ def merge_all(data: dict) -> gpd.GeoDataFrame:
     })
 
     if data["ssb"] is not None:
+        # SSB er nå på kommune × år-grain. Vi joiner på (kommune_nr, aar) slik
+        # at alle postnummer i samme kommune får kommunens verdier for hvert år.
+        # Denormaliseringen skjer altså her, ikke i standardize-fasen.
         ssb = data["ssb"]
-        # kommune_nr finnes i begge — drop fra SSB for å unngå _x/_y-suffikser
-        ssb = ssb.drop(columns=["kommune_nr"], errors="ignore")
         # Mål dekningen som "hvor mange backbone-rader matches" — bruk indicator
         # for å sjekke om merge faktisk fant kombinasjonen i SSB-tabellen
         before = backbone.merge(
-            ssb[["postnummer", "aar"]].drop_duplicates(),
-            on=["postnummer", "aar"], how="left", indicator=True,
+            ssb[["kommune_nr", "aar"]].drop_duplicates(),
+            on=["kommune_nr", "aar"], how="left", indicator=True,
         )["_merge"].eq("both").mean()
-        backbone = backbone.merge(ssb, on=["postnummer", "aar"], how="left")
+        backbone = backbone.merge(ssb, on=["kommune_nr", "aar"], how="left")
         _log("MERGE", {"kilde": "ssb", "dekning": f"{before:.1%}"})
 
     # Steg 5: beregn befolkningstetthet. Areal er per postnummer, men

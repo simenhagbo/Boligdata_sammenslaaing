@@ -1,0 +1,302 @@
+{
+  "type": "investment_ensemble",
+  "target": "percentile_rank_av_real_prisstigning_aar+1",
+  "target_horizon_years": 1,
+  "trained_at": "2026-05-29T22:32:20.558241",
+  "feature_cols_oh": [
+    "areal_km2",
+    "sentroide_lat",
+    "sentroide_lon",
+    "avstand_oslo_km",
+    "avstand_naermeste_storby_km",
+    "temperatur_normal",
+    "nedbor_normal_mm",
+    "avstand_togstasjon_km",
+    "temperatur_normal_frost",
+    "nedbor_normal_frost_mm",
+    "met_stasjon_avstand_km",
+    "aar",
+    "antall_boliger",
+    "andel_bygntype_01_kommune",
+    "andel_bygntype_02_kommune",
+    "andel_bygntype_03_kommune",
+    "andel_bygntype_04_kommune",
+    "andel_bygntype_05_kommune",
+    "befolkning",
+    "inntekt_etter_skatt",
+    "pris_kvm_enebolig_kommune",
+    "pris_kvm_smaahus_kommune",
+    "pris_kvm_blokk_kommune",
+    "pris_kvm_alle_kommune",
+    "antall_omsetninger_kommune",
+    "andel_byggeaar_for1946_kommune",
+    "andel_byggeaar_1946_1970_kommune",
+    "andel_byggeaar_1971_1990_kommune",
+    "andel_byggeaar_1991_2010_kommune",
+    "andel_byggeaar_etter2010_kommune",
+    "median_byggeaar_kommune",
+    "andel_areal_under60_kommune",
+    "andel_areal_60_99_kommune",
+    "andel_areal_100_159_kommune",
+    "andel_areal_160_249_kommune",
+    "andel_areal_over250_kommune",
+    "median_bruksareal_kommune",
+    "andel_utdanning_grunnskole_kommune",
+    "andel_utdanning_videregaaende_kommune",
+    "andel_utdanning_uh_kort_kommune",
+    "andel_utdanning_uh_lang_kommune",
+    "andel_utdanning_fagskole_kommune",
+    "antall_sysselsatte",
+    "andel_arbeidsledige_kommune",
+    "netto_innflytting_kommune",
+    "antall_husholdninger_kommune",
+    "andel_enslige_kommune",
+    "fullforte_boliger_kommune",
+    "igangsatte_boliger_kommune",
+    "eiendomsskatt_sats_kommune",
+    "befolkningstetthet",
+    "kpi_indeks",
+    "kpi_endring_pct",
+    "styringsrente",
+    "boliglaansrente",
+    "prisstigning_nominal_pct",
+    "cagr_5aar_real_pct",
+    "volatilitet_5aar",
+    "sharpe_5aar",
+    "pris_lag1_kommune",
+    "pris_lag2_kommune",
+    "inntekt_yoy_pct",
+    "pris_til_inntekt_ratio",
+    "pris_relativ_norge_pct",
+    "real_rente_pct",
+    "momentum_3y_real_pct",
+    "momentum_5y_real_pct",
+    "pris_relativ_norge_yoy",
+    "naermeste_storby_Bergen",
+    "naermeste_storby_Kristiansand",
+    "naermeste_storby_Oslo",
+    "naermeste_storby_Stavanger",
+    "naermeste_storby_Tromsø",
+    "naermeste_storby_Trondheim",
+    "modal_boligtype_kommune_01",
+    "modal_boligtype_kommune_03",
+    "modal_boligtype_kommune_04"
+  ],
+  "feature_cols_cat": [
+    "areal_km2",
+    "sentroide_lat",
+    "sentroide_lon",
+    "avstand_oslo_km",
+    "avstand_naermeste_storby_km",
+    "naermeste_storby",
+    "temperatur_normal",
+    "nedbor_normal_mm",
+    "avstand_togstasjon_km",
+    "temperatur_normal_frost",
+    "nedbor_normal_frost_mm",
+    "met_stasjon_avstand_km",
+    "aar",
+    "antall_boliger",
+    "modal_boligtype_kommune",
+    "andel_bygntype_01_kommune",
+    "andel_bygntype_02_kommune",
+    "andel_bygntype_03_kommune",
+    "andel_bygntype_04_kommune",
+    "andel_bygntype_05_kommune",
+    "befolkning",
+    "inntekt_etter_skatt",
+    "pris_kvm_enebolig_kommune",
+    "pris_kvm_smaahus_kommune",
+    "pris_kvm_blokk_kommune",
+    "pris_kvm_alle_kommune",
+    "antall_omsetninger_kommune",
+    "andel_byggeaar_for1946_kommune",
+    "andel_byggeaar_1946_1970_kommune",
+    "andel_byggeaar_1971_1990_kommune",
+    "andel_byggeaar_1991_2010_kommune",
+    "andel_byggeaar_etter2010_kommune",
+    "median_byggeaar_kommune",
+    "andel_areal_under60_kommune",
+    "andel_areal_60_99_kommune",
+    "andel_areal_100_159_kommune",
+    "andel_areal_160_249_kommune",
+    "andel_areal_over250_kommune",
+    "median_bruksareal_kommune",
+    "andel_utdanning_grunnskole_kommune",
+    "andel_utdanning_videregaaende_kommune",
+    "andel_utdanning_uh_kort_kommune",
+    "andel_utdanning_uh_lang_kommune",
+    "andel_utdanning_fagskole_kommune",
+    "antall_sysselsatte",
+    "andel_arbeidsledige_kommune",
+    "netto_innflytting_kommune",
+    "antall_husholdninger_kommune",
+    "andel_enslige_kommune",
+    "fullforte_boliger_kommune",
+    "igangsatte_boliger_kommune",
+    "eiendomsskatt_sats_kommune",
+    "befolkningstetthet",
+    "kpi_indeks",
+    "kpi_endring_pct",
+    "styringsrente",
+    "boliglaansrente",
+    "prisstigning_nominal_pct",
+    "cagr_5aar_real_pct",
+    "volatilitet_5aar",
+    "sharpe_5aar",
+    "pris_lag1_kommune",
+    "pris_lag2_kommune",
+    "inntekt_yoy_pct",
+    "pris_til_inntekt_ratio",
+    "pris_relativ_norge_pct",
+    "real_rente_pct",
+    "momentum_3y_real_pct",
+    "momentum_5y_real_pct",
+    "pris_relativ_norge_yoy"
+  ],
+  "categorical_features": [
+    "naermeste_storby",
+    "modal_boligtype_kommune"
+  ],
+  "n_train": 43689,
+  "n_val": 5919,
+  "n_test": 9106,
+  "n_test_kommune_year": 787,
+  "best_params": {
+    "xgb": {
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_child_weight": 1,
+      "subsample": 1.0
+    },
+    "lgbm": {
+      "num_leaves": 63,
+      "learning_rate": 0.1,
+      "min_child_samples": 5
+    },
+    "catboost": {
+      "depth": 8,
+      "learning_rate": 0.05,
+      "l2_leaf_reg": 3
+    }
+  },
+  "ensemble_weights": {
+    "xgb": 0.0,
+    "lgbm": 1.0,
+    "catboost": 0.0
+  },
+  "ensemble_scheme": "best_single",
+  "training_time_sec": {
+    "xgb": 0.4,
+    "lgbm": 0.7,
+    "catboost": 1.8
+  },
+  "test_metrics": {
+    "xgb": {
+      "spearman_mean": 0.24773102454125973,
+      "spearman_per_year": {
+        "2021": 0.3078314806659029,
+        "2022": 0.2097791413169567,
+        "2023": 0.2255824516409196
+      },
+      "top10_precision_mean": 0.5666666666666668,
+      "top10_precision_per_year": {
+        "2021": 0.8,
+        "2022": 0.5,
+        "2023": 0.4
+      },
+      "mae_rank": 0.24037544429302216,
+      "mae_rank_per_year": {
+        "2021": 0.23777732253074646,
+        "2022": 0.2369997501373291,
+        "2023": 0.24637405574321747
+      }
+    },
+    "lgbm": {
+      "spearman_mean": 0.2762528610355327,
+      "spearman_per_year": {
+        "2021": 0.295015776625056,
+        "2022": 0.2740735854220962,
+        "2023": 0.2596692210594459
+      },
+      "top10_precision_mean": 0.6666666666666666,
+      "top10_precision_per_year": {
+        "2021": 0.7,
+        "2022": 0.6,
+        "2023": 0.7
+      },
+      "mae_rank": 0.240509441473104,
+      "mae_rank_per_year": {
+        "2021": 0.24001031462945294,
+        "2022": 0.23628909532693484,
+        "2023": 0.24530183516275714
+      }
+    },
+    "catboost": {
+      "spearman_mean": 0.20370472667225,
+      "spearman_per_year": {
+        "2021": 0.22661096964252295,
+        "2022": 0.20199279910878712,
+        "2023": 0.1825104112654399
+      },
+      "top10_precision_mean": 0.10000000000000002,
+      "top10_precision_per_year": {
+        "2021": 0.1,
+        "2022": 0.1,
+        "2023": 0.1
+      },
+      "mae_rank": 0.2534931665603972,
+      "mae_rank_per_year": {
+        "2021": 0.25224415330121897,
+        "2022": 0.2505041535714538,
+        "2023": 0.2577691661364121
+      }
+    },
+    "ensemble": {
+      "spearman_mean": 0.2762528610355327,
+      "spearman_per_year": {
+        "2021": 0.295015776625056,
+        "2022": 0.2740735854220962,
+        "2023": 0.2596692210594459
+      },
+      "top10_precision_mean": 0.6666666666666666,
+      "top10_precision_per_year": {
+        "2021": 0.7,
+        "2022": 0.6,
+        "2023": 0.7
+      },
+      "mae_rank": 0.240509441473104,
+      "mae_rank_per_year": {
+        "2021": 0.24001031462945294,
+        "2022": 0.23628909532693484,
+        "2023": 0.24530183516275714
+      }
+    },
+    "naive": {
+      "spearman_mean": 0.0,
+      "spearman_per_year": {
+        "2021": 0.0,
+        "2022": 0.0,
+        "2023": 0.0
+      },
+      "top10_precision_mean": 0.3333333333333333,
+      "top10_precision_per_year": {
+        "2021": 0.1,
+        "2022": 0.5,
+        "2023": 0.4
+      },
+      "mae_rank": 0.25051790907484356,
+      "mae_rank_per_year": {
+        "2021": 0.2527617966231002,
+        "2022": 0.24456928767375508,
+        "2023": 0.25437042406202076
+      }
+    }
+  },
+  "library_versions": {
+    "xgboost": "3.2.0",
+    "lightgbm": "4.6.0",
+    "catboost": "1.2.10"
+  },
+  "device": "cuda"
+}
