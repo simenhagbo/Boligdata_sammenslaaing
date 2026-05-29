@@ -56,6 +56,7 @@ def compute_geofeatures() -> gpd.GeoDataFrame:
             "Kjør standardize_kartverket.py før standardize_geofeatures.py"
         )
 
+    # Les postnummer-geometrien fra standardisert parquet
     gdf = gpd.read_parquet(src)
 
     # Reprojiser fra EPSG:4326 (grader) til EPSG:25833 (UTM 33N, meter) før
@@ -125,6 +126,7 @@ def compute_geofeatures() -> gpd.GeoDataFrame:
 
 
 def main() -> None:
+    # Wrapper rundt compute_geofeatures med banner-utskrift
     print("=== Standardisering: Geofeatures ===")
     compute_geofeatures()
     print("=== Geofeatures standardisering ferdig ===\n")

@@ -153,6 +153,8 @@ def fetch_bygninger_for_fylke(fylke_nr: str) -> None:
 
 
 def main() -> None:
+    # Iterer fylke for fylke. En feil i ett fylke skal ikke stoppe hele kjøringen
+    # — vi samler opp og rapporter etterpå slik at brukeren kan retry de som feilet.
     print("=== Innsamling: Matrikkelen-Bygningspunkt ===")
     print("  Dette tar 30-60 minutter — 4,4M bygg paginert i 5000 av gangen")
     failed: list[str] = []
@@ -163,6 +165,7 @@ def main() -> None:
         except Exception as e:
             print(f"    ADVARSEL: Feil for fylke {fylke}: {e}")
             failed.append(fylke)
+    # Rapporter samlet status på slutten
     if failed:
         print(f"  Fullført med feil i fylker: {failed}")
     print("=== Matrikkelen ferdig ===\n")

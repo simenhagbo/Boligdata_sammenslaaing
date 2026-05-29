@@ -649,10 +649,12 @@ def standardize_sysselsetting() -> pd.DataFrame:
 # ----- Main -----
 
 def main() -> None:
+    # Bygg postnummer × år-grunnlaget som alle SSB-delene blir merget på
     print("=== Standardisering: SSB (tidsserie 2002-2024) ===")
     backbone = load_backbone()
     print(f"  Backbone: {len(backbone):,} rader (postnummer × år)")
 
+    # Kjør hver standardize-funksjon og samle resultatene i en dict
     parts = {
         "boliger_per_type": standardize_boliger_per_type(),
         "folkemengde": standardize_folkemengde(),
@@ -678,6 +680,7 @@ def main() -> None:
             continue
         df = df.merge(p, on=["kommune_nr", "aar"], how="left")
 
+    # Skriv samlet output
     out = STD_DIR / "ssb_bolig_demografi.parquet"
     df.to_parquet(out, index=False)
     print(f"\n  ssb_bolig_demografi.parquet: {len(df):,} rader, {len(df.columns)} kolonner")

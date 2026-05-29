@@ -63,6 +63,7 @@ def _build_session() -> requests.Session:
     return session
 
 
+# Én delt session per prosess — gjenbruker connection pool og retry-config.
 _SESSION = _build_session()
 
 

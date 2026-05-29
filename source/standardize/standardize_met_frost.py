@@ -156,6 +156,7 @@ def map_postnummer_til_stasjon() -> pd.DataFrame:
         nearest_idx[i:i + chunk] = dist.argmin(axis=1)
         min_avstand_m[i:i + chunk] = dist.min(axis=1)
 
+    # Bygg sluttabellen: én rad per postnummer med klima-verdier fra nærmeste stasjon
     out_df = pd.DataFrame({
         "postnummer": gdf["postnummer"].values,
         "temperatur_normal_frost": klima_stasjoner["temperatur_normal_frost"].iloc[nearest_idx].values,
@@ -164,6 +165,7 @@ def map_postnummer_til_stasjon() -> pd.DataFrame:
         "met_stasjon_avstand_km": min_avstand_m / 1000,
     })
 
+    # Skriv parquet og rapporter avstand- og temperatur-stats
     out = STD_DIR / "postnummer_met_frost.parquet"
     out_df.to_parquet(out, index=False)
     print(f"  postnummer_met_frost.parquet: {len(out_df)} postnummer")

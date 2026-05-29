@@ -37,14 +37,17 @@ def check(label: str, ok: bool, details: str = "") -> bool:
 
 
 def main() -> None:
+    # Avbryt hvis pipelinen ikke er kjørt enda
     if not FINAL.exists():
         print(f"FEIL: {FINAL} finnes ikke. Kjør 'python source/pipeline.py' først.")
         return
 
+    # Last datasettet og rapporter dimensjoner
     df = gpd.read_parquet(FINAL)
     print(f"Lastet datasett: {df.shape[0]:,} rader × {df.shape[1]} kolonner")
     print(f"  {df['postnummer'].nunique():,} unike postnummer × {df['aar'].nunique()} år\n")
 
+    # Teller feilede sjekker for samlet status på slutten
     failures = 0
 
     print("1. Struktur:")
@@ -143,11 +146,13 @@ def main() -> None:
             failures += 1
 
     print("\n6. Geografisk plausibilitet:")
+    # Oslo-postnummer skal selvsagt være nærmest Oslo, ikke en av de andre storbyene
     oslo = df[df["kommunenavn"] == "Oslo"]
     if len(oslo) > 0:
         if not check("Oslo-postnummer har 'Oslo' som nærmeste storby",
                      (oslo["naermeste_storby"] == "Oslo").all()):
             failures += 1
+    # Bbox-sjekk for hele Norge: lat 57-81, lon -10-32
     if not check("Sentroider innen Norge (lat 57-81, lon -10-32)",
                  df["sentroide_lat"].between(57, 81).all() and
                  df["sentroide_lon"].between(-10, 32).all()):

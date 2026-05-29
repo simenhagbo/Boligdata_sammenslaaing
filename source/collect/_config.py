@@ -41,10 +41,12 @@ def get_secret(key: str) -> str | None:
     Miljøvariabel har høyest prioritet — slik at CI-systemer og automatiserte
     kjøringer kan injisere verdier uten å skrive en .env-fil.
     """
+    # Sjekk miljøvariabler først
     val = os.environ.get(key)
     if val:
         return val.strip()
 
+    # Fall tilbake til .env-fil i prosjektrot
     env_path = Path(__file__).parents[2] / ".env"
     env_values = _read_env_file(env_path)
     return env_values.get(key)

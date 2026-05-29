@@ -50,6 +50,8 @@ def fetch_postnummer_wfs() -> None:
         print(f"  Allerede hentet: {out_path.name} ({out_path.stat().st_size / 1024:.0f} KB)")
         return
 
+    # WFS-spørringen: be om alle postnummerområder i UTM 33N (EPSG:25833)
+    # som GML 3.2.1 — det er det formatet WFS-en faktisk støtter.
     params = {
         "service": "WFS",
         "version": "2.0.0",
@@ -59,6 +61,7 @@ def fetch_postnummer_wfs() -> None:
         "srsName": "urn:ogc:def:crs:EPSG::25833",
     }
 
+    # Utfør nedlastingen og verifiser at vi fikk en gyldig HTTP-status.
     print("  Henter postnummer-polygoner fra WFS...")
     resp = _http.get(POSTNR_WFS, params=params, timeout=300, max_bytes=MAX_WFS_BYTES)
     if resp.status_code >= 400:
@@ -70,6 +73,7 @@ def fetch_postnummer_wfs() -> None:
     if "ExceptionReport" in resp.text[:500] or "ServiceException" in resp.text[:500]:
         raise RuntimeError(f"WFS returnerte feilmelding: {resp.text[:300]}")
 
+    # Lagre rådata-GML-filen og verifiser at størrelsen er rimelig
     out_path.write_bytes(resp.content)
     size_kb = out_path.stat().st_size / 1024
     if size_kb * 1024 < MIN_GML_BYTES:
@@ -122,6 +126,8 @@ def fetch_postnummer_registry() -> None:
             "kategori": parts[4].strip() if len(parts) > 4 else "",
         })
 
+    # Avbryt hvis ingen rader ble parset — da har vi sannsynligvis fått en
+    # feilside fra Bring i stedet for et faktisk registry.
     if not rows:
         raise RuntimeError("Tomt postnummer-registry fra Bring — sjekk format")
 
@@ -131,12 +137,14 @@ def fetch_postnummer_registry() -> None:
         print(f"  ADVARSEL: {ignored}/{total_lines} linjer ignorert "
               f"({ignored / total_lines:.1%}) — sjekk om Bring har endret format")
 
+    # Skriv ut som JSON med UTF-8 — gjør standardize-fasen encoding-uavhengig.
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
     print(f"  Lagret: {out_path.name} ({len(rows)} postnummer)")
 
 
 def main() -> None:
+    # Liten orkestrator: kjør begge nedlastingene i rekkefølge.
     print("=== Innsamling: Kartverket + Bring ===")
     fetch_postnummer_wfs()
     fetch_postnummer_registry()

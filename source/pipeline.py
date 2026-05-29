@@ -94,6 +94,7 @@ def run_merge() -> None:
 
 
 def main() -> None:
+    # CLI-flagg: enkeltvis kontroll over hvilke faser som kjøres
     parser = argparse.ArgumentParser(description="Boligdata sammenslåing pipeline")
     parser.add_argument("--collect", action="store_true")
     parser.add_argument("--standardize", action="store_true")
@@ -128,7 +129,6 @@ def main() -> None:
         _run("Eksport — CSV", lambda: export_to_csv(med_geometri=False))
 
     print(f"\n{'='*60}\nPipeline ferdig på {time.time() - t0:.1f}s\n{'='*60}\n")
-
 
 if __name__ == "__main__":
     main()

@@ -12,7 +12,6 @@ Bruk:
 
 import argparse
 from pathlib import Path
-
 import geopandas as gpd
 
 FINAL = Path(__file__).parents[1] / "data" / "processed_data" / "final"
@@ -23,7 +22,6 @@ SRC = FINAL / "boligdata_final.parquet"
 # kan Excel utføre formelen i stedet for å vise teksten — en kjent klasse
 # av CSV-injection-angrep. Vi prefikser med apostrof for å forhindre det.
 _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-
 
 def _sanitize_cell(v: object) -> object:
     """Prefiks en streng med apostrof hvis den starter med et formel-tegn.
@@ -44,9 +42,11 @@ def export(med_geometri: bool) -> None:
     droppe geometri-kolonnen (default — gir vanlig tabell), eller konvertere
     til WKT-streng (gir lesbar polygontekst men dobler filstørrelsen).
     """
+    # Avbryt hvis pipelinen ikke er kjørt enda
     if not SRC.exists():
         raise FileNotFoundError(f"{SRC} finnes ikke — kjør pipelinen først")
 
+    # Les parquet inn som GeoDataFrame slik at geometry-kolonnen tolkes riktig
     gdf = gpd.read_parquet(SRC)
 
     if med_geometri:
@@ -76,6 +76,7 @@ def export(med_geometri: bool) -> None:
 
 
 def main() -> None:
+    # CLI-flagg for å beholde geometri i output. Default er uten.
     parser = argparse.ArgumentParser(description="Eksporter datasett til CSV")
     parser.add_argument("--med-geometri", action="store_true",
                         help="Behold polygon som WKT-streng (gir stor fil)")

@@ -27,6 +27,7 @@ def standardize_postnummer_geometri() -> gpd.GeoDataFrame:
     src = RAW_DIR / "postnummer_wfs.gml"
     out = OUT_DIR / "postnummer_geometri.parquet"
 
+    # Les GML-filen og reprojiser fra UTM 33N til lat/lon
     gdf = gpd.read_file(src)
     gdf = gdf.to_crs("EPSG:4326")
     # Lowercase alt for konsistens — GML kan returnere blandet casing
@@ -45,6 +46,7 @@ def standardize_postnummer_geometri() -> gpd.GeoDataFrame:
     # Behold kun det vi trenger; drop_duplicates som sikkerhetssjekk
     gdf = gdf[["postnummer", "geometry"]].drop_duplicates("postnummer")
 
+    # Skriv standardisert GeoParquet
     gdf.to_parquet(out, index=False)
     print(f"  postnummer_geometri.parquet: {len(gdf)} postnummer")
     return gdf
@@ -55,6 +57,7 @@ def standardize_postnummer_kommune_mapping() -> pd.DataFrame:
     src = RAW_DIR / "postnummer_registry.json"
     out = OUT_DIR / "postnummer_kommune_mapping.parquet"
 
+    # Les Brings JSON-eksport og konverter til DataFrame
     with open(src, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -69,6 +72,7 @@ def standardize_postnummer_kommune_mapping() -> pd.DataFrame:
     df["poststedsnavn"] = df["poststedsnavn"].astype(str).str.title()
     df["kommunenavn"] = df["kommunenavn"].astype(str).str.title()
 
+    # Behold bare kolonnene vi trenger til join og skriv ut
     df = df[["postnummer", "poststedsnavn", "kommune_nr", "kommunenavn"]].drop_duplicates("postnummer")
     df.to_parquet(out, index=False)
     print(f"  postnummer_kommune_mapping.parquet: {len(df)} postnummer")
@@ -76,6 +80,7 @@ def standardize_postnummer_kommune_mapping() -> pd.DataFrame:
 
 
 def main() -> None:
+    # Kjør begge standardiserings-stegene i rekkefølge
     print("=== Standardisering: Kartverket ===")
     standardize_postnummer_geometri()
     standardize_postnummer_kommune_mapping()

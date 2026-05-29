@@ -103,6 +103,7 @@ def standardize_styringsrente() -> pd.DataFrame:
 def main() -> None:
     print("=== Standardisering: Makrodata ===")
 
+    # Kjør alle tre parser-funksjoner og samle resultatene
     parts = {
         "kpi": standardize_kpi(),
         "styringsrente": standardize_styringsrente(),
@@ -121,6 +122,7 @@ def main() -> None:
     # siden vi ikke har forrige år å sammenligne med.
     df["kpi_endring_pct"] = df["kpi_indeks"].pct_change() * 100
 
+    # Slå inn rente-seriene én etter én med outer-join
     for name in ("styringsrente", "boliglaansrente"):
         if not parts[name].empty:
             df = df.merge(parts[name], on="aar", how="outer")
@@ -130,6 +132,7 @@ def main() -> None:
     # år kommer automatisk inn når SSB publiserer.
     df = df[df["aar"] >= 2002].sort_values("aar").reset_index(drop=True)
 
+    # Skriv parquet og rapporter dekning per kolonne
     out = STD_DIR / "makrodata.parquet"
     df.to_parquet(out, index=False)
     print(f"\n  makrodata.parquet: {len(df)} år × {len(df.columns)} kolonner")

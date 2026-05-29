@@ -341,6 +341,7 @@ def quality_check(df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def main() -> None:
     print("=== Sammenslåing + kvalitetskontroll ===")
 
+    # Tre-stegs flyt: last alle standardiserte filer, slå dem sammen, sjekk kvalitet
     data = load_standardized()
     merged = merge_all(data)
     final = quality_check(merged)
@@ -354,6 +355,7 @@ def main() -> None:
     # Sorter for å gjøre filen lett å inspisere
     final = final.sort_values(["postnummer", "aar"]).reset_index(drop=True)
 
+    # Skriv det endelige datasettet som parquet
     out_parquet = FINAL_DIR / "boligdata_final.parquet"
     final.to_parquet(out_parquet, index=False)
     _log("OUTPUT", {
@@ -364,6 +366,7 @@ def main() -> None:
         "unike_aar": int(final["aar"].nunique()),
     })
 
+    # Lagre detaljert merge-logg som JSON for senere inspeksjon
     out_log = FINAL_DIR / "merge_log.json"
     with open(out_log, "w", encoding="utf-8") as f:
         json.dump(LOG, f, ensure_ascii=False, indent=2)

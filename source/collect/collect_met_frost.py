@@ -176,6 +176,8 @@ def fetch_normaler() -> None:
 
 
 def main() -> None:
+    # Validér auth opp-front så vi ikke kaster bort tid på en delvis kjøring
+    # uten gyldig klient-ID.
     print("=== Innsamling: MET Frost ===")
     try:
         _client_id()  # validér tidlig
@@ -184,6 +186,8 @@ def main() -> None:
         print("=== MET Frost ferdig (hoppet over) ===\n")
         return
 
+    # Kjør begge nedlastingene; logg feil som advarsel slik at hele
+    # pipelinen kan fortsette selv om en av delene feiler.
     try:
         fetch_stasjoner()
         fetch_normaler()

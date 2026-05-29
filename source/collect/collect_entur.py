@@ -51,6 +51,7 @@ def fetch_togstasjoner() -> None:
     timeout. Vi henter alle stops og filtrerer på rail-modus i standardize
     siden GraphQL-skjemaet ikke har transportMode-filter på BBOX-query.
     """
+    # Hopp over hvis gyldig cache finnes; slett korrupt rest fra forrige kjøring.
     out_path = RAW_DIR / "togstasjoner.json"
     if _http.is_valid_json(out_path):
         print(f"  Allerede hentet: {out_path.name}")
@@ -58,8 +59,10 @@ def fetch_togstasjoner() -> None:
     if out_path.exists():
         out_path.unlink()
 
+    # Iterer gjennom hver BBOX og send en GraphQL-spørring per bit.
     alle_stops: list[dict] = []
     for min_lat, max_lat, min_lon, max_lon, navn in NORGE_BBOX:
+        # Bygg en GraphQL-query som henter alle stops innenfor BBOX-en
         query = f"""
         {{
           stopPlacesByBbox(
@@ -77,6 +80,7 @@ def fetch_togstasjoner() -> None:
           }}
         }}
         """
+        # Send POST-en og verifiser HTTP-status før vi forsøker å parse JSON
         print(f"  Henter Entur BBOX {navn}...")
         resp = _http.post(
             ENTUR_GRAPHQL,
@@ -87,6 +91,7 @@ def fetch_togstasjoner() -> None:
         if resp.status_code >= 400:
             raise requests.HTTPError(f"Entur HTTP {resp.status_code}: {resp.text[:300]}")
 
+        # Parse svaret og avbryt hvis GraphQL returnerte en feil i JSON-body
         data = resp.json()
         if "errors" in data:
             raise RuntimeError(f"Entur GraphQL-feil: {data['errors'][:1]}")
@@ -107,12 +112,14 @@ def fetch_togstasjoner() -> None:
             seen.add(s["id"])
             unike.append(s)
 
+    # Lagre dedupliserte stasjoner som JSON for standardize-fasen
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(unike, f, ensure_ascii=False, indent=2)
     print(f"  Lagret: {out_path.name} ({len(unike)} unike togstasjoner)")
 
 
 def main() -> None:
+    # Entur har bare én fetch-funksjon, så main er en tynn wrapper.
     print("=== Innsamling: Entur ===")
     fetch_togstasjoner()
     print("=== Entur ferdig ===\n")

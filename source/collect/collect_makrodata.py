@@ -47,6 +47,7 @@ def fetch_styringsrente() -> None:
     standardize-fasen. `endPeriod=2030` slik at framtidige år blir hentet
     automatisk når API-et får nye observasjoner.
     """
+    # Cache-håndtering: hopp over gyldig, slett korrupt
     out_path = RAW_DIR / "styringsrente_norgesbank.json"
     if _http.is_valid_json(out_path):
         print(f"  Allerede hentet: {out_path.name}")
@@ -54,6 +55,7 @@ def fetch_styringsrente() -> None:
     if out_path.exists():
         out_path.unlink()
 
+    # Last ned SDMX-JSON-responsen
     print("  Henter styringsrente fra Norges Bank...")
     resp = _http.get(NORGES_BANK_STYRINGSRENTE, timeout=120, max_bytes=MAX_BYTES)
     if resp.status_code >= 400:
@@ -61,6 +63,7 @@ def fetch_styringsrente() -> None:
             f"Norges Bank HTTP {resp.status_code}: {resp.text[:300]}"
         )
 
+    # Lagre rådata uendret — parsing av SDMX gjøres i standardize
     payload = resp.json()
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -71,6 +74,7 @@ def _ssb_fetch(table_id: str, query: dict, out_name: str) -> None:
     """Felles SSB-fetch — samme mønster som collect_ssb.fetch_table men i lokal
     raw_data/makrodata-mappe slik at makrodata-kildene er gruppert sammen.
     """
+    # Idempotent cache: hopp over gyldig, slett korrupt før ny nedlasting
     out_path = RAW_DIR / out_name
     if _http.is_valid_json(out_path):
         print(f"  Allerede hentet: {out_path.name}")
@@ -79,6 +83,7 @@ def _ssb_fetch(table_id: str, query: dict, out_name: str) -> None:
         print(f"  Korrupt cache slettet: {out_path.name}")
         out_path.unlink()
 
+    # POST query mot SSB og verifiser HTTP-status
     print(f"  Henter SSB tabell {table_id}...")
     resp = _http.post(
         f"{SSB_API}/{table_id}",
@@ -90,6 +95,7 @@ def _ssb_fetch(table_id: str, query: dict, out_name: str) -> None:
         raise requests.HTTPError(
             f"SSB tabell {table_id}: HTTP {resp.status_code} — {resp.text[:300]}"
         )
+    # Lagre rådata som JSON for standardize-fasen
     payload = resp.json()
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -146,6 +152,8 @@ FETCHERS = [
 
 
 def main() -> None:
+    # Iterer gjennom alle makro-kilder. Én feilende kilde stopper ikke resten —
+    # vi rapporterer samlet på slutten slik at brukeren kan retry det som feilet.
     print("=== Innsamling: Makrodata ===")
     failed: list[str] = []
     for label, fn in FETCHERS:
@@ -154,6 +162,7 @@ def main() -> None:
         except Exception as e:
             print(f"  ADVARSEL: {label} feilet: {e}")
             failed.append(label)
+        # Liten pause mellom kall — god skikk mot SSB/Norges Bank
         _http.politely_sleep(0.2)
     if failed:
         print(f"  Fullført med feil i: {failed}")

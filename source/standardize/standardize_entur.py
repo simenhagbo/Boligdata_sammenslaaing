@@ -69,6 +69,7 @@ def compute_togstasjon_features() -> pd.DataFrame:
         dist = np.sqrt((diff ** 2).sum(axis=2))
         min_avstand_m[i:i + chunk_size] = dist.min(axis=1)
 
+    # Bygg sluttabell og skriv parquet med distribusjons-stats til logg
     out_df = pd.DataFrame({
         "postnummer": gdf["postnummer"].values,
         "avstand_togstasjon_km": min_avstand_m / 1000,
@@ -82,6 +83,7 @@ def compute_togstasjon_features() -> pd.DataFrame:
 
 
 def main() -> None:
+    # Wrapper rundt compute_togstasjon_features med banner-utskrift
     print("=== Standardisering: Entur ===")
     compute_togstasjon_features()
     print("=== Entur standardisering ferdig ===\n")

@@ -51,6 +51,7 @@ def load_all_properties() -> pd.DataFrame:
                 f"Ingen matrikkelfiler i {RAW_DIR} — kjør collect_matrikkelen.py først"
             )
 
+    # Iterer gjennom alle GML-filer og samle relevante kolonner i en liste
     frames: list[pd.DataFrame] = []
     for fp in files:
         try:
@@ -73,6 +74,7 @@ def load_all_properties() -> pd.DataFrame:
     if not frames:
         raise RuntimeError("Ingen lesbare GML-filer hadde forventede attributter")
 
+    # Slå alle deler sammen til én tabell
     df = pd.concat(frames, ignore_index=True)
     print(f"  Lastet {len(df):,} bygninger fra {len(files)} GML-filer")
     return df
@@ -80,12 +82,14 @@ def load_all_properties() -> pd.DataFrame:
 
 def aggregate_per_kommune(df: pd.DataFrame) -> pd.DataFrame:
     """Tell bygninger og finn modus av bygningstype per kommune."""
+    # Slå opp riktig kolonnenavn i GML-en (case kan variere)
     cols = df.columns.tolist()
     type_col = _find_col(cols, _TYPE_COLS)
     kom_col = _find_col(cols, _KOMMUNE_COLS)
     if kom_col is None:
         raise ValueError(f"Fant ikke kommunenummer-kolonne. Tilgjengelige: {cols[:20]}")
 
+    # Normaliser format på begge feltene før groupby
     df = df.copy()
     # zfill(4) sikrer at kommunenummer er på samme format som i resten av
     # datasettet (Bring-mappingen bruker også 4 sifre med ledende null)
@@ -97,6 +101,7 @@ def aggregate_per_kommune(df: pd.DataFrame) -> pd.DataFrame:
         counts = s.value_counts()
         return str(counts.index[0]) if len(counts) > 0 else "ukjent"
 
+    # Aggregér: count + modal bygningstype per kommune
     return df.groupby("kommune_nr").agg(
         antall_bygninger_kommune=("bygningstype", "count"),
         modal_bygningstype_kommune=("bygningstype", modal),
@@ -104,6 +109,7 @@ def aggregate_per_kommune(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
+    # Last alle paginerte GML-filer, aggregér til kommune-nivå, og lagre resultat
     print("=== Standardisering: Matrikkelen ===")
     raw = load_all_properties()
     aggregated = aggregate_per_kommune(raw)

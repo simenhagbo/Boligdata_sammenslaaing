@@ -141,6 +141,7 @@ def fetch_table(table_id: str, query: dict, out_name: str) -> None:
 
 
 def fetch_boliger_per_type() -> None:
+    # Antall boliger fordelt på bygningstype per kommune × år (starter 2006).
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
@@ -181,6 +182,7 @@ def fetch_inntekt() -> None:
 
 
 def fetch_priser() -> None:
+    # Kjernetabellen for målet: pris per kvm + antall omsetninger per boligtype.
     query = {
         "query": [
             {"code": "Region", "selection": {"filter": "all", "values": ["*"]}},
